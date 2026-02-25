@@ -104,10 +104,7 @@ def get_distance_between_edges(Q: ndarray, sphere_com: ndarray, radius_sphere: f
     # distance vector (3 x 1) between the 2 edges.
     d: ndarray = cylinder_edge - sphere_edge
 
-    # project d onto r_hat_
+    # project d onto the norm vector between the 2 geometries
     d_projected: ndarray = dot_product(d, sphere_direction)
 
-    # print(f"Cylinder edge: {cylinder_edge}\n")
-    # print(f"sphere edge: {sphere_edge}")
-
-    return d_projected, cylinder_edge, sphere_edge
+    return d_projected, cylinder_edge, sphere_edge, sphere_direction
