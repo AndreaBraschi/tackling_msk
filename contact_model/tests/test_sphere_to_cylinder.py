@@ -2,7 +2,7 @@ import os
 import math
 from numpy import ndarray, array, concatenate
 from pandas import Series, DataFrame
-from opensim import Model
+from opensim import Model, Coordinate, Body, Point, Vec3
 from contact_model.sphere_to_cylinder import compute_penetration
 from osim_utils.read import readStoFile
 
@@ -21,14 +21,19 @@ velData = readStoFile(os.path.join(ik_dir, "optimized_scale_and_markers_BodyKine
 ik_file = f"{trial}_IK.mot"
 ikData = readStoFile(os.path.join(ik_dir, ik_file))
 
-time = ikData["time"]
-ikCoords = ikData.iloc[:, 1:]
+stateFileName: str = "model_StatesReporter_states.sto"
+stateData: DataFrame = readStoFile(os.path.join(ik_dir, stateFileName))
+
+time = stateData["time"]
+coordinates = stateData.iloc[:, 1::2]
+speeds = stateData.iloc[:, 2::2]
 t_flags = ["tx", "ty", "tz", "t1", "t2", "t3"]
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Load .osim Model and get CoordinateSet and BodySet
 # ----------------------------------------------------------------------------------------------------------------------
-model = Model("X:\Health\ResearchProjects\DCazzola\RE-FH1285-c-spine-injuries-in-rugby\Darios data\Phase 3\OpenSim\P8/scaled_model_markers.osim")
+model = Model(r"C:\Users\ab3758\Downloads\modifiedWrapping_pb.osim")
+
 s = model.initSystem()
 coordinateSet = model.getCoordinateSet()
 bodySet = model.getBodySet()
@@ -48,18 +53,17 @@ cylinderVel: ndarray = concatenate([cylinderVelx, cylinderVely, cylinderVelz], a
 for n in range(50, 120):
     print(f"Frame number: {n}, Time: {time[n]}")
     for i, coord in enumerate(coordinateSet):
-        coordName = ikCoords.columns[i]
-        coordValue = ikCoords.iloc[n, i] * (math.pi / 180)
-        if len(coordName.split("_")) > 1:
-            if coordName.split("_")[1] in t_flags:
-                coordValue /= (math.pi / 180)
+        coordName: str = coordinates.columns[i].split("/")[-2]
+        coordValue: float = float(coordinates.iloc[n, i])
+        speedValue: float = float(speeds.iloc[n, i])
+        coordinate: Coordinate = model.getCoordinateSet().get(i)
+        coordinate.setValue(s, coordValue)
+        coordinate.setSpeedValue(s, speedValue)
 
-        model.getCoordinateSet().get(i).setValue(s, coordValue)
+    model.realizeVelocity(s)
+    clavicleBody: Body = bodySet.get("rclavicle")
 
-    model.realizePosition(s)
-
-    cylinderBody = bodySet.get("punching_bag_2")
-    clavicleBody = bodySet.get("rclavicle")
-
-    d = compute_penetration(sphere_loc, cylinderBody, cylinderVel[n][:, None], clavicleBody, s)
+    d, vel = compute_penetration(model, sphere_loc, cylinderVel[n][:, None], clavicleBody, s)
+    print(f"Penetration: {d}")
+    print(f"Velocity: {vel}")
     print("\n")
