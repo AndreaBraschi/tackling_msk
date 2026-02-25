@@ -25,7 +25,7 @@ def find_point_projection_along_a_line(P0: ndarray, P1: ndarray, P2: ndarray) ->
     # 3) compute vector that goes from one of the 2 points to the one that doesn't lie on the line
     q: ndarray = find_vector_between_two_points(P1, P0)
 
-    # 4) project q onto r_hat to find the scalar value t that dictates how much r_hat will have to be sclaed uo or
+    # 4) project q onto r_hat to find the scalar value t that dictates how much r_hat will have to be scaled up or
     #    down to go from P1 to the poit projection of P0 onto the r-line
     t: ndarray = dot_product(q, r)
 
@@ -68,9 +68,6 @@ def get_distance_between_edges(Q: ndarray, sphere_com: ndarray, radius_sphere: f
     # directional vector that points from sphere_com at Q
     r_hat_: ndarray = unit_vector(r_hat * (-1))
 
-    print(f"motion direction: {motion_direction[0]}")
-    print(f"r_hat: {r_hat[0]}")
-
     # here we have handle the 2 following cases
     # 1) when the sphere centre of mass hasn't gone over the cylinder edge: in this case we have the cylinder horizontal
     #    motion direction vector that is pointing in the same direction as the unit vector that points towards the sphere
@@ -80,10 +77,12 @@ def get_distance_between_edges(Q: ndarray, sphere_com: ndarray, radius_sphere: f
         if motion_direction[0] > 0:
             cylinder_edge: ndarray = Q + (radius_cylinder * r_hat * (-1))
             sphere_edge: ndarray = sphere_com + (radius_sphere * r_hat_ * (-1))
+            sphere_direction: ndarray = r_hat * (-1)
 
         else:
             cylinder_edge: ndarray = Q + (radius_cylinder * r_hat)
             sphere_edge: ndarray = sphere_com + (radius_sphere * r_hat_)
+            sphere_direction: ndarray = r_hat
 
 
     # 2) when the sphere centre of mass has gone over the cylinder edge: in this case we have the cylinder horizontal
@@ -94,13 +93,21 @@ def get_distance_between_edges(Q: ndarray, sphere_com: ndarray, radius_sphere: f
         if motion_direction[0] > 0:
             cylinder_edge: ndarray = Q + (radius_cylinder * r_hat)
             sphere_edge: ndarray = sphere_com + (radius_sphere * r_hat_)
+            sphere_direction: ndarray = r_hat
 
         else:
             cylinder_edge: ndarray = Q + (radius_cylinder * r_hat * (-1))
             sphere_edge: ndarray = sphere_com + (radius_sphere * r_hat_ * (-1))
+            sphere_direction: ndarray = r_hat * (-1)
 
 
-    # distance vector (3 x 1) between the 2 edges in the global reference frame.
+    # distance vector (3 x 1) between the 2 edges.
     d: ndarray = cylinder_edge - sphere_edge
 
-    return d, cylinder_edge, sphere_edge
+    # project d onto r_hat_
+    d_projected: ndarray = dot_product(d, sphere_direction)
+
+    # print(f"Cylinder edge: {cylinder_edge}\n")
+    # print(f"sphere edge: {sphere_edge}")
+
+    return d_projected, cylinder_edge, sphere_edge
