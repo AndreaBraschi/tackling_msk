@@ -1,9 +1,8 @@
 import os
-import math
 from numpy import ndarray, array, concatenate
 from pandas import Series, DataFrame
 from opensim import Model, Coordinate, Body, Point, Vec3
-from contact_model.sphere_to_cylinder import compute_penetration
+from contact_model.sphere_to_cylinder import compute_x_and_x_dot
 from osim_utils.read import readStoFile
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -63,7 +62,7 @@ for n in range(50, 120):
     model.realizeVelocity(s)
     clavicleBody: Body = bodySet.get("rclavicle")
 
-    d, vel = compute_penetration(model, sphere_loc, cylinderVel[n][:, None], clavicleBody, s)
+    d, vel = compute_x_and_x_dot(model, sphere_loc, cylinderVel[n][:, None], clavicleBody, s)
     print(f"Penetration: {d}")
     print(f"Velocity: {vel}")
     print("\n")
