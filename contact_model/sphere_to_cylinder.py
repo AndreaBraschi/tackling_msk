@@ -1,12 +1,12 @@
-from numpy import array
-from utils.vector_algebra import unit_vector, norm
+from utils.vector_algebra import unit_vector, dot_product
 from utils.geometry import find_point_projection_along_a_line, get_distance_between_edges
 
 # type hint imports
 from numpy import ndarray
 from opensim import Model, State, Body, Frame, Marker, Vec3, Ground
+from typing import Tuple
 
-def compute_penetration(model: Model, sphere_loc: ndarray, cylinder_vel: ndarray, clavicle: Body, s: State):
+def compute_x_and_x_dot(model: Model, sphere_loc: ndarray, cylinder_vel: ndarray, clavicle: Body, s: State):
 
     """
     This function aims at computing the penetration between a sphere and a cylinder and its 1st time derivative.
@@ -20,9 +20,6 @@ def compute_penetration(model: Model, sphere_loc: ndarray, cylinder_vel: ndarray
 
     # ground
     ground: Ground = model.getGround()
-
-    # cylinder half height
-    half_h: float = 0.5386
 
     # cylinder radius
     cylinder_r: float = 0.1702085
@@ -69,7 +66,7 @@ def compute_penetration(model: Model, sphere_loc: ndarray, cylinder_vel: ndarray
     # compute directional vector of cylinder velocity
     cylinder_motion_direction: ndarray = unit_vector(cylinder_vel)
 
-    d, cylinder_edge, sphere_edge = get_distance_between_edges(Q_clavicleFrame, sphere_com.to_numpy()[:, None],
+    d, cylinder_edge, sphere_edge, n = get_distance_between_edges(Q_clavicleFrame, sphere_com.to_numpy()[:, None],
                                                                sphere_r, cylinder_r, cylinder_motion_direction)
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -100,4 +97,7 @@ def compute_penetration(model: Model, sphere_loc: ndarray, cylinder_vel: ndarray
     # compute relative vel
     vel: ndarray = cylinderEdge_vel.to_numpy() - spheredEdge_vel.to_numpy()
 
-    return d, vel
+    # project vel onto normal unit vector
+    vel_scalar: float = float(dot_product(vel, n))
+
+    return d, vel_scalar
