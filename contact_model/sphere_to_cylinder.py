@@ -4,9 +4,9 @@ from utils.geometry import find_point_projection_along_a_line, get_distance_betw
 # type hint imports
 from numpy import ndarray
 from opensim import Model, State, Body, Frame, Marker, Vec3, Ground
-from typing import Tuple
 
-def compute_x_and_x_dot(model: Model, sphere_loc: ndarray, cylinder_vel: ndarray, clavicle: Body, s: State):
+def compute_x_and_x_dot(model: Model, sphere_loc: ndarray, cylinder_vel: ndarray, clavicle: Body, sphere_r: float,
+                        cylinder_r: float, s: State):
 
     """
     This function aims at computing the penetration between a sphere and a cylinder and its 1st time derivative.
@@ -20,12 +20,6 @@ def compute_x_and_x_dot(model: Model, sphere_loc: ndarray, cylinder_vel: ndarray
 
     # ground
     ground: Ground = model.getGround()
-
-    # cylinder radius
-    cylinder_r: float = 0.1702085
-
-    # sphere radius
-    sphere_r: float = 0.025
 
     # convert sphere location to Vec3 object
     sphere_loc_vec3: Vec3 = Vec3.createFromMat(sphere_loc.squeeze(-1))
@@ -52,12 +46,17 @@ def compute_x_and_x_dot(model: Model, sphere_loc: ndarray, cylinder_vel: ndarray
     # find sphere CoM in global reference frame
     sphere_com: Vec3 = clavicleFrame.findStationLocationInGround(s, sphere_loc_vec3)
 
+    cylinderBody: Body = model.getBodySet().get("punching_bag")
+    cylinderFrame: Frame = cylinderBody.findBaseFrame()
+
     # ------------------------------------------------------------------------------------------------------------------
     # compute the position of the centre of the top and bottom surfaces of the cylinder
     # ------------------------------------------------------------------------------------------------------------------
     # find projection of the sphere CoM onto the cylinder longitudinal axis --> we're converting the Vec3 objects to
     # NumPy arrays.
-    Q_local: ndarray = find_point_projection_along_a_line(sphere_com.to_numpy()[:, None], cylinder_bottom.to_numpy()[:, None], cylinder_top.to_numpy()[:, None])
+    Q_local: ndarray = find_point_projection_along_a_line(sphere_com.to_numpy()[:, None],
+                                                          cylinder_bottom.to_numpy()[:, None],
+                                                          cylinder_top.to_numpy()[:, None])
 
     # Q_local is a relative positional vector that goes from the bottom of the cylinder to the projected point. However,
     # we need it in the reference frame of the clavicle.
@@ -68,7 +67,6 @@ def compute_x_and_x_dot(model: Model, sphere_loc: ndarray, cylinder_vel: ndarray
 
     d, cylinder_edge, sphere_edge, n = get_distance_between_edges(Q_clavicleFrame, sphere_com.to_numpy()[:, None],
                                                                sphere_r, cylinder_r, cylinder_motion_direction)
-
     # ------------------------------------------------------------------------------------------------------------------
     # compute relative velocity of the 2 edge points
     # ------------------------------------------------------------------------------------------------------------------
@@ -87,11 +85,11 @@ def compute_x_and_x_dot(model: Model, sphere_loc: ndarray, cylinder_vel: ndarray
     sphereEdge_loc: Vec3 = Vec3.createFromMat(sphere_edge)
 
     # local vector
-    cylinderEdge_station: Vec3 = ground.findStationLocationInAnotherFrame(s, cylinderEdge_loc, clavicleFrame)
+    cylinderEdge_station: Vec3 = ground.findStationLocationInAnotherFrame(s, cylinderEdge_loc, cylinderFrame)
     sphereEdge_station: Vec3 = ground.findStationLocationInAnotherFrame(s, sphereEdge_loc, clavicleFrame)
 
     # find velocity of these 2 points, which are expressed in the clavicle reference frame, in ground
-    cylinderEdge_vel: Vec3 = clavicleFrame.findStationVelocityInGround(s, cylinderEdge_station)
+    cylinderEdge_vel: Vec3 = cylinderFrame.findStationVelocityInGround(s, cylinderEdge_station)
     spheredEdge_vel: Vec3 = clavicleFrame.findStationVelocityInGround(s, sphereEdge_station)
 
     # compute relative vel
