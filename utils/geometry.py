@@ -66,7 +66,7 @@ def get_distance_between_edges(Q: ndarray, sphere_com: ndarray, radius_sphere: f
     # directional vector that points from Q at sphere_com
     r_hat: ndarray = unit_vector(r)
     # directional vector that points from sphere_com at Q
-    r_hat_: ndarray = unit_vector(r_hat * (-1))
+    r_hat_: ndarray = r_hat * (-1)
 
     # here we have handle the 2 following cases
     # 1) when the sphere centre of mass hasn't gone over the cylinder edge: in this case we have the cylinder horizontal
