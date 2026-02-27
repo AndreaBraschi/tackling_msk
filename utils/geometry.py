@@ -108,3 +108,8 @@ def get_distance_between_edges(Q: ndarray, sphere_com: ndarray, radius_sphere: f
     d_projected: ndarray = dot_product(d, sphere_direction)
 
     return d_projected, cylinder_edge, sphere_edge, sphere_direction
+
+
+def compute_effective_radius(r1: float, r2: float) -> float:
+    R: float = (r1 * r2) / (r1 + r2)
+    return R
