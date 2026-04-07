@@ -5,8 +5,8 @@ from utils.geometry import find_point_projection_along_a_line, get_distance_betw
 from numpy import ndarray
 from opensim import Model, State, Body, Frame, Marker, Vec3, Ground
 
-def compute_x_and_x_dot(model: Model, sphere_loc: ndarray, cylinder_vel: ndarray, clavicle: Body, sphere_r: float,
-                        cylinder_r: float, s: State):
+def compute_x_and_x_dot(model: Model, s: State, clavicle: Body, sphere_r: float, sphere_loc: ndarray,
+                        cylinder_r: float, cylinder_top: ndarray, cylinder_bottom: ndarray, cylinder_vel: ndarray):
 
     """
     This function aims at computing the penetration between a sphere and a cylinder and its 1st time derivative.
@@ -38,25 +38,25 @@ def compute_x_and_x_dot(model: Model, sphere_loc: ndarray, cylinder_vel: ndarray
     cylinderFrame: Frame = cylinderBody.findBaseFrame()
 
     # ------------------------------------------------------------------------------------------------------------------
-    # compute the position of the centre of the top and bottom surfaces of the cylinder
+    # express the position of the centre of the top and bottom surfaces of the cylinder in the Ground frame
     # ------------------------------------------------------------------------------------------------------------------
-    # find top centre
-    cylinder_top_marker: Marker = model.getMarkerSet().get("cylinder_top")
-    cylinder_top: Vec3 = cylinder_top_marker.findLocationInFrame(s, model.getGround())
+    # convert numpy arrays to Vec3 objects
+    cylinder_top_vec: Vec3 = Vec3.createFromMat(cylinder_top.squeeze(-1))
+    cylinder_bottom_vec: Vec3 = Vec3.createFromMat(cylinder_bottom.squeeze(-1))
 
-    # find bottom centre
-    cylinder_bottom_marker: Marker = model.getMarkerSet().get("cylinder_bottom")
-    cylinder_bottom: Vec3 = cylinder_bottom_marker.findLocationInFrame(s, model.getGround())
+    # express them in ground from the cylinderFrame object
+    cylinder_top_global: Vec3 = cylinderFrame.findStationLocationInGround(s, cylinder_top_vec)
+    cylinder_bottom_global: Vec3 = cylinderFrame.findStationLocationInGround(s, cylinder_bottom_vec)
 
 
     # find projection of the sphere CoM onto the cylinder longitudinal axis --> this will be a relative position vector,
     # expressed with respect to the bottom surface center of the cylinder.
     Q_relative: ndarray = find_point_projection_along_a_line(sphere_com.to_numpy()[:, None],
-                                                          cylinder_bottom.to_numpy()[:, None],
-                                                          cylinder_top.to_numpy()[:, None])
+                                                          cylinder_bottom_global.to_numpy()[:, None],
+                                                          cylinder_top_global.to_numpy()[:, None])
 
     # Now we add the cylinder bottom center vector to express Q in the Global reference frame.
-    Q_global: ndarray = Q_relative + cylinder_bottom.to_numpy()[:, None]
+    Q_global: ndarray = Q_relative + cylinder_bottom_global.to_numpy()[:, None]
 
     # compute directional vector of cylinder velocity
     cylinder_motion_direction: ndarray = unit_vector(cylinder_vel)
