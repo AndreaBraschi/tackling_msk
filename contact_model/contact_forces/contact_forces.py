@@ -22,7 +22,7 @@ def compute_fv(x_dot: float, c: float) -> float:
     return f_v
 
 
-def hunt_crossley(f_p: float, f_v: float, sphere_r: float, k: float) -> float:
+def hunt_crossley(f_p: float, f_v: float, R: float, k: float) -> float:
     """
     This function computes the Hunt-Crossley contact force.
 
@@ -32,6 +32,6 @@ def hunt_crossley(f_p: float, f_v: float, sphere_r: float, k: float) -> float:
                     and its rate of change over time.
     """
 
-    f_n: float = (4/3) * (k ** 1.5) * sqrt(sphere_r) * f_p * f_v
+    f_n: float = (4/3) * (k ** 1.5) * sqrt(R) * f_p * f_v
 
     return f_n
