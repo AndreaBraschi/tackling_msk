@@ -1,41 +1,44 @@
-function Qs = readMotQs(mot_filepath)
+function Qs = readMotQs(mot_filepath, filter)
 % -------------------------------------------------------------------------
 % readMotFile
 %   This function reads a .mot file.
 
 % INPUTs:
 %   - mot_filepath (str): full path to the .mot file.
+%   - filter (char): whether you want to filter the structure that gets
+%   created from the .mot file data
 
 % OUTPUT:
 %   - Qs: filtered coordinates
 % -------------------------------------------------------------------------
-    mot = importdata(mot_filepath);
+    Qs = importdata(mot_filepath);
 
-    Qs.time = mot.data(:,strcmp(mot.colheaders, {'time'}));
-    Qs.all(:, 1) = Qs.time;
-    Qs.colheaders{1,1} = 'time';
+    Qs.time = Qs.data(:,strcmp(Qs.colheaders, {'time'}));
+    translational_tags = {'tx', 'ty', 'tz'};
+    
+    % When dealing with .mot files (IK results), we have the joint
+    % coordinates in degrees. OpenSim/Simbody require radians for their
+    % internal operations.
+    % Let's look for the set of indices in the column space of the mot
+    % structure that corresponds to translational DoFs
+    mask = cellfun(@(h) any(contains(h, translational_tags)), Qs.colheaders);
 
-    count = 1;
-    translational_tags = {"tx", "ty", "tz"};
-    % loop through each column of the data
-    for i = 1:size(mot.data, 2)
-    count = count + 1;
-    if length(split(mot.colheaders{i})) > 1 || any(ismember(split(mot.colheaders{i}), translational_tags))
-        Qs.(mot.colheaders{i}) = Qsall.data(:,strcmp(Qsall.colheaders, mot.colheaders{i}));
+    % now convert to radians
+    Qs.data(:, ~mask) = Qs.data(:, ~mask) * (pi / 180);
+
+    % Low-pass filter only if the user has passed a 'yes' as input
+    if strcmp(filter, 'yes')
+        order = 2;
+        cutoff_low = 15;
+        fs= 1 / mean(diff(Qs.data(:, 1)));
+        [af,bf] = butter(order/2, cutoff_low./(0.5*fs), 'low');
+        Qs.allfilt = Qs.data;
+        Qs.allfilt(:, 2:end) = filtfilt(af, bf, Qs.allfilt(:,2:end));
+    
     else
-        Qs.(mot.colheaders{i}) = Qsall.data(:,strcmp(Qsall.colheaders, mot.colheaders{i})).*(pi/180);
-    end
-    Qs.all(:,count) = Qs.(mot.colheaders{i});
-    Qs.colheaders(1,count) = Qsall.colheaders(1,strcmp(Qsall.colheaders, mot.colheaders{i}));
-
+        Qs.allfilt = Qs.data; % Store original data if no filtering is applied
+    
     end
 
-    % Low-pass filter
-    order = 2;
-    cutoff_low = 15;
-    fs=1/mean(diff(Qs.all(:,1)));
-    [af,bf] = butter(order/2,cutoff_low./(0.5*fs),'low');
-    Qs.allfilt = Qs.all;
-    Qs.allfilt(:,2:end) = filtfilt(af,bf,Qs.allfilt(:,2:end));
 
 end
