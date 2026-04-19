@@ -3,3 +3,4 @@ __pycache__/
 polynomial_fitting/
 
 *.log
+*.asv
