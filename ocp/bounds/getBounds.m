@@ -14,10 +14,12 @@ function [bounds, scaling] = getBounds(Qs, GRF, model)
 import org.opensim.modeling.*
 
 coordinateSet = model.getCoordinateSet();
-muscleSet = model.getForceSet().getMuscleSet();
+muscleSet = model.getForceSet().getMuscles();
+actuatorSet = model.getForceSet().getActuators();
 
 num_q = coordinateSet.getSize();  % number of coordinates
 num_muscles = muscleSet.getSize();  % number of muscles
+num_act = actuatorSet.getSize();  % number of actuators
 
 time = Qs.allfilt(:, 1);
 y = zeros(num_q);
@@ -27,7 +29,7 @@ y = zeros(num_q);
 % loop through the columns of Qs, starting from index 2 (1 is time), and
 % calculate the spline coefficients, given the experimental data
 for i = 2:num_q
-    cs = spline(time, Qs.allfilt(:,i));
+    cs = spline(time, Qs.allfilt(:, i));
     y(i) = eval_spline(cs, time, 2);
 end
 
@@ -88,6 +90,9 @@ bounds.GRF.upper = (bounds.GRF.upper)./scaling.GRF;
 bounds.a.lower = zeros(1, num_muscles);
 bounds.a.upper = ones(1, num_muscles);
 
+% scaling
+scaling.a = 1;
+
 % ---- d_activation / dt (time derivative) ---- %
 tact = 0.015;
 tdeact = 0.06;
@@ -108,7 +113,15 @@ bounds.dFTtilde.lower = -1*ones(1, num_muscles);
 bounds.dFTtilde.upper = 1*ones(1, num_muscles);
 
 
-% ---> why arm excitation?
+% -------------------------- Torque Actuators -------------------------- %
+% Torque actuator activations
+bounds.a_a.lower = -ones(1, num_act);
+bounds.a_a.upper = ones(1, num_act);
+
+% Torque actuator excitation
+bounds.e_a.lower = -ones(1, num_act);
+bounds.e_a.upper = ones(1, num_act);
+
 
 % ------------------------- Contact Model bounds ------------------------- %
 
