@@ -46,17 +46,19 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
     NThreads = 8; % Number of threads used in parallel.
 
     
-    % --- add paths of the repo where we'll be picking functions from --- % 
+    % --- add paths of subdirectories where we'll be picking functions from --- % 
     pathmain = pwd;
     [pathRepo,~,~] = fileparts(pathmain);
     
     pathSettings = [pathRepo,'/Settings'];
     addpath(genpath(pathSettings));
 
-    pathFileFunctions = [pathRepo,'/filesFunctions'];
-    addpath(genpath(pathFileFunctions));
+    % various utility functions
+    pathUtils = [pathRepo,'/utils'];
+    addpath(genpath(pathUtils));
 
-    pathCollocationScheme = [pathRepo,'/CollocationScheme'];
+    % collocation scheme
+    pathCollocationScheme = [pathRepo,'/collocationScheme'];
     addpath(genpath(pathCollocationScheme));
 
     pathMuscleModel = [pathRepo,'/MuscleModel'];
@@ -87,7 +89,7 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
     Options.useReoptimizedPoly = 1;
 
     Options.err_poly = err_poly;
-    Options.maxsmoothness='MellowMax'; %options: logSum, MellowMax, nosmooth
+    Options.maxsmoothness = 'MellowMax'; %options: logSum, MellowMax, nosmooth
 
     tol_ipopt = 4;    % tolerance (means 1e-(tol_ipopt))
 
@@ -117,7 +119,7 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
     N = 40;   % number of mesh intervals
     d = 3; % number of collocation points per mesh interval
     method = 'radau'; % collocation method
-    [tau_root, C, D, B] = CollocationScheme(d, method); % collocation scheme. See function to understand how state variables and their derivatives are computed at the collocation points
+    [tau_root, C, D, B] = collocationScheme(d, method); % collocation scheme. See function to understand how state variables and their derivatives are computed at the collocation points
     
     
     % Load external functions
@@ -133,11 +135,9 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
     % build the model once per external function, whereas keeping the contact
     % model in the external function would require re-building the model during
     % the optimization.
-    dll_path = [pathExternalFunctions, dll_name]; 
+    dll_path = [pathExternalFunctions, dll_filename]; 
     F = external('F', dll_path); 
     cd(pathmain);
-
-
 
 
     % --------------------- Model Information --------------------- % 
@@ -165,7 +165,7 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
     nametrial.GRF   = [nametrial.id, "grf"];
     nametrial.IK    = [nametrial.id, "_IK"];
 
-    Qs = readMotFile(fullfile(trial_path, nametrial.IK));
+    Qs = readMotQs(fullfile(trial_path, nametrial.IK));
     dt_ik = Qs.time(2) - Qs.time(1);
 
     % load Ground Reaction Forces
@@ -176,24 +176,32 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
     time_opt = [Qs.time(1, 1) Qs.time(end, 1)];
 
 
-    % ------------ Interpolation ------------ %
-    % compute the time window of each mesh
-    step = (time_opt(2) - time_opt(1)) / N;
+    % -------------------------- Interpolation -------------------------- %
+    % compute the Period of each mesh
+    mesh_T = (time_opt(2) - time_opt(1)) / N;
 
-    % create a time vector that goes from time_opt(1) to time_opt(2)
-    % .window by window.
-    intervals = time_opt(1):step:time_opt(2);
-    % now, let's create a vector that contains time stamps that correspond
-    % to every single collocation point along the trajectory.
-    time_grid = zeros(N*d,1);
-    time_grid(1:d:end) = intervals(1:end-1) + tau_root(2)*step; % 1st collocation point of every mesh
-    time_grid(2:d:end) = intervals(1:end-1) + tau_root(3)*step; % 2nd collocation point of every mesh
-    time_grid(3:d:end) = intervals(1:end-1) + tau_root(4)*step; % 3rd collocation point of every mesh
+    % create a time vector that represents N + 1 points which are the last
+    % point of each mesh. Considering the continuity constraint, the last
+    % point of one mesh represents the first of the next one.
+    time_intervals = time_opt(1):mesh_T:time_opt(2);
+    
+    % now, for each mesh, let's create a vector that contains the 3
+    % collocation points along the input space.
+    time_grid = zeros(N * d, 1);
+    time_grid(1:d:end) = time_intervals(1:end-1) + tau_root(2) * mesh_T; % 1st collocation point of every mesh
+    time_grid(2:d:end) = time_intervals(1:end-1) + tau_root(3) * mesh_T; % 2nd collocation point of every mesh
+    time_grid(3:d:end) = time_intervals(1:end-1) + tau_root(4) * mesh_T; % 3rd collocation point of every mesh
 
 
-    % --------- IK --------- %
+    % --- IK --- %
+    % find Qs values at first/last point of each mesh
+    Qs.allinterpfilt = interp1(Qs.allfilt(:, 1), Qs.allfilt, time_intervals);
+    
+    % find Qs values at each collocation point along the trajectory
+    Qs.allinterpfilt_col = interp1(Qs.allfilt(:,1), Qs.allfilt, time_grid');
 
-    % --------- GRF --------- %
+
+    % --- GRF --- %
     % find indices where the 2 items of time_opt are 
     hz_GRF = 2000;  % make this more flexible, probably computing it from the grf.mot file as in the IK case is ideal
     dt_GRF = 1 / hz_GRF;
@@ -201,6 +209,18 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
     time_expi.GRF(2) = find((GRF.time<(time_opt(2) + dt_GRF/2)) & (GRF.time>=(time_opt(2) - dt_GRF/2)));
 
 
+    
+    % ------------------- Experimental Data Scaling  ------------------- %
+    
+    
+    
+    % ----------------------------- Bounds  ----------------------------- %
+
+
+
+    % -------------------------- Initial Guess  ------------------------- %
+    
+    
     % CasADi function --> what does this do? 
 
 
