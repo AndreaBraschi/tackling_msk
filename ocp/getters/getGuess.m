@@ -6,26 +6,26 @@ function guess = getGuess(Qs, nq, nMuscles, nActuators)
 %   dimensions of the state vector, which is made of: q, q_dot, muscle act,
 %   muscle dact/dt, 
 %   This function was adapted to the specific case of this repo, but the
-%   original form can be found at:
+%   original, generic version can be found at:
 
 %   https://github.com/KULeuvenNeuromechanics/PredSim/OCP/getGuess_DI_opti.m
 
 % INPUTs:
-%   - Qs: coordinates coming from IK.
+%   - Qs (struct): coordinates coming from IK.
 % 
-%   - nq (integer): number of coordinates
-
-%   - scaling -
+%   - nq (int): number of coordinates
+%
+%   - nMuscles (int): number of muscles
 % 
-%   - d: degree of the interpolating polynomial of the collocation scheme
+%   - nActuatos (int): number of actuators
 %
 % OUTPUT:
-%   - guess -
-%   * initial guess values for all optimisation variables
-% 
+%   - guess (struct): guess object that contains the initial guess for all
+%   the dimension of the state vector.
+ 
 
 T = size(Qs.allinterpfilt, 1);  % Period: discrete points along the trajectory
-
+dims = nq * 2;  % total dimensionality of the q-part of the state vector.
 
 % --------------------------------------------------------------------------
 % ------ Interpolate the generalised coordinates using cubic splines ------
@@ -60,17 +60,25 @@ end
 
 
 % add the splined Q, Qdot and Qdotdot to a 'guess' struct
-for i=1:nq
-    % end points of the mesh
-    guess.Qs_all(:, i) = Qs_spline.data(:, i);
-    guess.Qdots_all(:, i) = Qdots_spline.data(:, i);
-    guess.Qdotdots_all(:, i) = Qdotdots_spline.data(:, i);
 
-    % collocation points
-    guess.Qs_col(:, i) = Qs_spline_col.data(:, i);
-    guess.Qdots_col(:, i) = Qdots_spline_col.data(:, i);
-    guess.Qdotdots_col(:, i) = Qdotdots_spline_col.data(:, i);
-end
+% We first need to place Qs and Qsdot as Simbody/OpenSim expect the state
+% vector to be: Q = [q_dot(:, 1), q_dot(:, 1), q(:, 2), q_dot(:, 2), ...]
+Q = reshape([Qs_spline, Qdots_spline], T, 2, dims);
+Q = reshape(permute(Q, [1, 3, 2]), T, dims * 2);
+
+Q_col = reshape([Qs_spline_col, Qdots_spline_col], T, 2, dims);
+Q_col = reshape(permute(Q_col, [1, 3, 2]), T, dims * 2);
+
+% add to a 'guess' struct: we can add the Q acceleration as they are, as
+% acceleration isn't part of the state vector.
+
+% end points of the mesh
+guess.Qs_all = Q;
+guess.Qdotdots_all = Qdotdots_spline.data;
+
+% collocation points
+guess.Qs_col = Q_col;
+guess.Qdotdots_col = Qdotdots_spline_col.data;
 
 
 % Muscle variables
