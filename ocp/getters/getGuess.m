@@ -1,4 +1,4 @@
-function guess = getGuess(Qs, nq, nMuscles, nActuators)
+function guess = getGuess(Qs, nq, num_muscles, num_actuators, scaling)
 % --------------------------------------------------------------------------
 % getGuess
 %   This function creates an inital guess for the design variables directly
@@ -15,9 +15,12 @@ function guess = getGuess(Qs, nq, nMuscles, nActuators)
 % 
 %   - nq (int): number of coordinates
 %
-%   - nMuscles (int): number of muscles
+%   - num_muscles (int): number of muscles
 % 
-%   - nActuatos (int): number of actuators
+%   - num_actuators (int): number of actuators
+%
+%   - scaling (struct): object containing the scaling factors for all the
+%   state vector dimensions.
 %
 % OUTPUT:
 %   - guess (struct): guess object that contains the initial guess for all
@@ -59,6 +62,17 @@ for i = 2:size(Qs.allfilt,2)
 end
 
 
+% ----- scale ----- %
+% end-points
+Qs_spline = (Qs_spline)./scaling.Qs;
+Qdots_spline = (Qdots_spline)./scaling.Qsdot;
+Qdotdots_spline = (Qdotdots_spline)./scaling.Qsdotdot;
+
+% collocation points
+Qs_spline_col = (Qs_spline_col)./scaling.Qs;
+Qdots_spline_col = (Qdots_spline_col)./scaling.Qsdot;
+Qdotdots_spline_col = (Qdotdots_spline_col)./scaling.Qsdotdot;
+
 % add the splined Q, Qdot and Qdotdot to a 'guess' struct
 
 % We first need to place Qs and Qsdot as Simbody/OpenSim expect the state
@@ -81,16 +95,24 @@ guess.Qs_col = Q_col;
 guess.Qdotdots_col = Qdotdots_spline_col.data;
 
 
-% Muscle variables
-guess.a = 0.1 * ones(T, NMuscle);
-guess.vA = 0.01 * ones(T, NMuscle);
-guess.FTtilde = 0.1 * ones(T, NMuscle);
-guess.dFTtilde = 0.01 * ones(T, NMuscle);
+% ----- Muscle variables ----- %
+a = 0.1 * ones(T, num_muscles);
+vA = 0.01 * ones(T, num_muscles);
+FTtilde = 0.1 * ones(T, num_muscles);
+dFTtilde = 0.01 * ones(T, num_muscles);
+
+% scale
+guess.a = (a)./scaling.a;
+guess.FTtilde = FTtilde./scaling.FTtilde;
+guess.vA  = (vA)./scaling.vA;
+guess.dFTtilde = (dFTtilde)./scaling.dFTtilde;
 
 
 % Torque actuators
-guess.a_a = 0.1*ones(T, nActuators);
-guess.e_a = 0.1*ones(T, nActuators);
+guess.a_a = 0.1*ones(T, num_actuators);
+guess.e_a = 0.1*ones(T, num_actuators);
+
+
 
 
 
