@@ -18,6 +18,9 @@ import org.opensim.modeling.*
 time = Qs.allfilt(:, 1);
 y = zeros(num_q);
 
+T = size(time, 1);  % period
+dims = num_q * 2;
+
 % Approximate 1st and 2nd derivative of Qs using analytical cubic spline
 % derivation.
 % loop through the columns of Qs, starting from index 2 (1 is time), and
@@ -34,25 +37,24 @@ end
 
 % --- positions --- %
 for i = 1:num_q
-    bounds.Qs.upper(i) = max(y(i).pos);
-    bounds.Qs.lower(i) = min(y(i).pos);
+    Qs.upper(i) = max(y(i).pos);
+    Qs.lower(i) = min(y(i).pos);
 end
 % scale
-scaling.Qs = max(abs(bounds.Qs.lower),abs(bounds.Qs.upper));
-bounds.Qs.lower = (bounds.Qs.lower)./scaling.Qs;
-bounds.Qs.upper = (bounds.Qs.upper)./scaling.Qs;
+scaling.Qs = max(abs(Qs.lower), abs(Qs.upper));
+Qs.lower = (Qs.lower)./scaling.Qs;
+Qs.upper = (Qs.upper)./scaling.Qs;
 
 
 % --- velocities --- %
 for i = 1:num_q
-    bounds.Qsdot.upper(i) = max(y(i).vel); 
-    bounds.Qsdot.lower(i) = min(y(i).vel);
+    Qsdot.upper(i) = max(y(i).vel); 
+    Qsdot.lower(i) = min(y(i).vel);
 end
 % scale
-scaling.Qsdot = max(abs(bounds.Qsdot.lower),abs(bounds.Qsdot.upper));
-bounds.Qsdot.lower = (bounds.Qsdot.lower)./scaling.Qsdot;
-bounds.Qsdot.upper = (bounds.Qsdot.upper)./scaling.Qsdot;
-
+scaling.Qsdot = max(abs(Qsdot.lower), abs(Qsdot.upper));
+Qsdot.lower = (Qsdot.lower)./scaling.Qsdot;
+Qsdot.upper = (Qsdot.upper)./scaling.Qsdot;
 
 % --- accelerations --- %
 for i = 1:num_q
@@ -63,6 +65,22 @@ end
 scaling.Qsdotdot = max(abs(bounds.Qsdotdot.lower),abs(bounds.Qsdotdot.upper));
 bounds.Qsdotdot.lower = (bounds.Qsdotdot.lower)./scaling.Qsdotdot;
 bounds.Qsdotdot.upper = (bounds.Qsdotdot.upper)./scaling.Qsdotdot;
+
+
+% Now, the way Simbody/Opensim expect the q-part of the state vector isn't
+% simply [q, q_dot], but the individual dimensions of q and q_dot are
+% rather interwinded as follos:
+% Q = [q(:, 1), q_dot(:, 1), q(:, 2), q_dot(:, 2), ...]
+% Therefore, we need to make sure that the bounds follow the same pattern,
+% as they will be assigned to the X design variables!
+X_lower = reshape([Qs.lower, Qsdot.lower], T, 2, dims);
+X_lower = reshape(permute(X_lower, [1, 3, 2]), T, dims * 2);
+
+X_upper = reshape([Qs.upper, Qsdot.upper], T, 2, dims);
+X_upper = reshape(permute(X_upper, [1, 3, 2]), T, dims * 2);
+
+bounds.X.lower = X_lower;
+bounds.X.upper = X_upper;
 
 % ----------------------------- GRFs bounds ----------------------------- %
 lower_grf = min(GRF.val.all(:,2:end));
