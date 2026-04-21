@@ -1,4 +1,4 @@
-function [bounds, scaling] = getBounds(Qs, GRF, model)
+function [bounds, scaling] = getBounds(Qs, GRF, num_q, num_muscles, num_act)
 
 % This function assign the bounds to: model coordinates (Qs), Ground
 % Reaction Forces (GRF), muscle activation, rate of change of muscle
@@ -7,19 +7,13 @@ function [bounds, scaling] = getBounds(Qs, GRF, model)
 
 %
 % Inputs:
-%   - Qs: 
-%   - GRF:
-%   - model:
+%   - Qs (struct): 
+%   - GRF (struct):
+%   - num_q (int):
+%   - num_muscles (int):
+%   - num_act (int):
 
 import org.opensim.modeling.*
-
-coordinateSet = model.getCoordinateSet();
-muscleSet = model.getForceSet().getMuscles();
-actuatorSet = model.getForceSet().getActuators();
-
-num_q = coordinateSet.getSize();  % number of coordinates
-num_muscles = muscleSet.getSize();  % number of muscles
-num_act = actuatorSet.getSize();  % number of actuators
 
 time = Qs.allfilt(:, 1);
 y = zeros(num_q);

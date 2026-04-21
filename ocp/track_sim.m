@@ -146,18 +146,22 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
     bodyMass = model.getTotalMass(state);
     bodyWeight = bodyMass * 9.81;
 
-    % 2) Coordinates
+    % 2) Model sets
     coordinateSet = model.getCoordinateSet();
+    forceSet = model.getForceSet();
+    muscleSet = forceSet.getMuscles();
+    actuatorSet = forceSet.getActuators();
     q_names = getItemNames(coordinateSet);
 
 
     % 3) Muscle Tendon Unit parameters
-    forceSet = model.getForceSet();
-    muscleSet = forceSet.getMuscles();
     muscleNames = getItemNames(muscleSet);
     MTparameters = getMTparameters(model, muscleNames);
 
-    % 4) muscles actuating the independed DoFs
+    % 4) let's get some information on the model
+    num_q = coordinateSet.getSize();  % number of coordinates
+    num_muscles = muscleSet.getSize();  % number of muscles
+    num_act = actuatorSet.getSize();  % number of actuators
 
     
 % -------------------------- Experimental Data -------------------------- % 
@@ -215,10 +219,12 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
     
     
     % ----------------------------- Bounds  ----------------------------- %
+    [bounds, scaling] = getBounds(Qs, GRFs, num_q, num_muscles, num_act);
 
 
 
     % -------------------------- Initial Guess  ------------------------- %
+
     
     
     % CasADi function --> what does this do? 
