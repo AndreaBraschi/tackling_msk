@@ -212,22 +212,216 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
     time_expi.GRF(1) = find((GRF.time<(time_opt(1) + dt_GRF/2)) & (GRF.time>=(time_opt(1) - dt_GRF/2)));
     time_expi.GRF(2) = find((GRF.time<(time_opt(2) + dt_GRF/2)) & (GRF.time>=(time_opt(2) - dt_GRF/2)));
 
-
-    
-    % ------------------- Experimental Data Scaling  ------------------- %
-    
-    
-    
     % ----------------------------- Bounds  ----------------------------- %
     [bounds, scaling] = getBounds(Qs, GRFs, num_q, num_muscles, num_act);
-
-
+    
+    
+    
+    % ------------------- Experimental Data Scaling  ------------------- %
+    %% TODO: 
+    % this is a 3rd repetition of the same interpolation process. It
+    % happens during 'getBounds' and 'getGuesses'. We could simply compute
+    % the spline coefficients once from the main script and pass that as
+    % input to the other functions where interpolation is performed.
+    % 
+    Qs_scaled = (Qs.allinterpfilt)/scaling.Qs;
+    Qs_scaled_col = interp1(interval(1:N+1), Qs_res_interpfilt_scaled_aux, time_grid);
+    
+    for i=2:size(Qs.allinterpfilt,2)
+        Q_spline(i-1)=spline(Qs.allinterpfilt(:,1),Qs.allinterpfilt(:,i));
+        Qdot_spline(i-1)=fnder(Q_spline(i-1),1);
+        Qdots.allinterpfilt(:,1)=Qs.allinterpfilt(:,1);
+        Qdots.allinterpfilt(:,i)=ppval(Qdot_spline(i-1),Qdots.allinterpfilt(:,1));
+    end
+    Qdots_res_interpfilt_scaled=Qdots.allinterpfilt(:,2:end)./scaling.Qdots;
+    Qdots_res_interpfilt_scaled_aux=Qdots_res_interpfilt_scaled(:,[1:4 6:14 20:34]); %exclude knee internal dofs
+    Qdots_res_interpfilt_scaled_aux_col=interp1(interval(1:N+1),Qdots_res_interpfilt_scaled_aux,tgrid_col);
+    
+    
+    
 
     % -------------------------- Initial Guess  ------------------------- %
+    guess = getGuess(Qs, num_q, num_muscles, num_act, scaling);
+    
+    
+
+    % ------------------------------------------------------------------- %
+    %                          NLP formulation                            %
+    % ------------------------------------------------------------------- %
+
+    % Start with an empty NLP. Initialize opti instance.
+    opti = casadi.Opti();
+
+    % Note: we're trying to optimise the state variable and the controls at
+    % the:
+    % 1) collocation points
+    % 2) mesh end-points: this is necessary to enforce continuity across
+    % segments
+    % We follow the same scheme for every subset of the design variable.
+
+    % ----- Qs and Qd_dot ----- %
+    % 1) collocation points
+    % Create a symbolic variable within the problem and assign it a number
+    % of dimensions and points along the trajectory.
+    dims = 2 * num_q;
+    points = N * d;  % we have d-collocation points x N-segments
+    X_col = opti.variable(dims, points);
+    
+    % bounds
+    opti.subject_to(bounds.X.lower' < X_col < bounds.X.upper');
+    % initial condition
+    opti.set_initial(X_col, guess.Qs_col');
+    
+    % 2) mesh end-points
+    points = N + 1;  
+    X = opti.variable(dims, points);
+    opti.subject_to(bounds.X.lower' < X < bounds.X.upper');
+    opti.set_initial(X, guess.Qs_all');
+
+    % ---------- Muscles ---------- %
+    % Activation
+    dims = num_muscles;
+    points = d * N;
+    
+    % 1) collocation points
+    a_col = opti.variable(dims, points);
+    opti.subject_to(bounds.a.lower'< a_col < bounds.a.upper');
+    opti.set_initial(a_col, guess.a_col');
+
+    % 2) mesh end-points
+    points = N;
+    a = opti.variable(dims, points);
+    opti.subject_to(bounds.a.lower'< a < bounds.a.upper');
+    opti.set_initial(a, guess.a'); 
+
+    % MT force
+    dims = num_muscles;
+    points = d * N;
+    
+    % 1) collocation points
+    FTtilde_col = opti.variable(dims, points);
+    opti.subject_to(bounds.FTtilde.lower'< FTtilde_col < bounds.FTtilde.upper');
+    opti.set_initial(FTtilde_col, guess.FTtilde_col');
+
+    % 2) mesh end-points
+    points = N;
+    FTtilde = opti.variable(dims, points);
+    opti.subject_to(bounds.FTtilde.lower'< FTtilde < bounds.FTtilde.upper');
+    opti.set_initial(FTtilde, guess.FTtilde');
+
 
     
+    % ----- Torque Actuators ----- %
+    dims = num_act;
+    points = d*N;
     
-    % CasADi function --> what does this do? 
+    % 1) collocation points
+    a_a_col = opti.variable(dims, points);
+    opti.subject_to(bounds.a_a.lower'< a_a_col < bounds.a_a.upper');
+    opti.set_initial(a_a_col, guess.a_a_col');
+
+    % 2) mesh end-points
+    points = N;
+    a_a = opti.variable(dims, points);
+    opti.subject_to(bounds.a_a.lower'< a_a < bounds.a_a.upper');
+    opti.set_initial(a_a, guess.a_a');  
+
+
+    % ----------------------- Controls  ----------------------- %
+    % ----- Muscles ----- %
+    % Time derivative of muscle activations (states) at mesh points
+    dims = num_muscles;
+    points = N;
+    
+    % end points
+    vA = opti.variable(num_muscles, N);
+    opti.subject_to(bounds.vA.lower'*ones(1,N) < vA < bounds.vA.upper'*ones(1,N));
+    opti.set_initial(vA, guess.vA'); 
+
+    % ----- Actuator Excitation ----- %
+    e_a = opti.variable(nq.arms, N);
+    opti.subject_to(bounds.e_a.lower'*ones(1,N) < e_a < bounds.e_a.upper'*ones(1,N));
+    opti.set_initial(e_a, guess.e_a');
+
+    % Define "slack" controls
+    % Time derivative of muscle-tendon forces (states) at collocation points
+    dFTtilde_col = opti.variable(NMuscle, d*N);
+    opti.subject_to(bounds.dFTtilde.lower'*ones(1,d*N) < dFTtilde_col < ...
+            bounds.dFTtilde.upper'*ones(1,d*N));
+    opti.set_initial(dFTtilde_col, guess.dFTtilde_col');
+    
+    % Time derivative of Qdots (states) at collocation points
+    A_col = opti.variable(nq.all, d*N);
+    opti.subject_to(bounds.Qdotdots.lower'*ones(1,d*N) < A_col < ...
+            bounds.Qdotdots.upper'*ones(1,d*N));
+    opti.set_initial(A_col, guess.Qdotdots_col'); 
+
+
+    % ------------------------------------------------------------------- %
+    % The following section uses the "MX" object from the CasADi library
+    % to register symbolic variables that will later be used in CasADi 
+    % "Function" objects, which dictate how these variables interact with
+    % each other.
+
+    % The suffix "k" indicates the variable at the mesh end-points.
+    % "j", on the other hand, at the collocation points.
+    % ------------------------------------------------------------------- %
+
+    % ---------- state-vector ---------- %
+    % activation
+    ak = MX.sym('ak', num_muscles);
+    aj = MX.sym('akmesh', num_muscles, d);
+    akj = [ak aj];
+    
+    % muscle-tendon unit force
+    FTtildek = MX.sym('FTtildek', num_muscles); 
+    FTtildej = MX.sym('FTtildej', num_muscles, d);
+    FTtildekj = [FTtildek FTtildej];
+    
+    % q and q_dot
+    Xk = MX.sym('Xk', 2 * num_q);
+    Xj = MX.sym('Xj', 2 * num_q, d);
+    Xkj = [Xk Xj];
+    
+    a_ak = MX.sym('a_ak', num_act);
+    a_aj = MX.sym('a_akmesh', num_act, d);
+    a_akj = [a_ak a_aj];
+    
+    
+    % ---------- controls ---------- %
+    % da/dt
+    vAk = MX.sym('vAk', num_muscles);
+    
+    % torque actuator excitation
+    e_ak = MX.sym('e_ak', num_act);
+    
+    % dF/dt
+    dFTtildej = MX.sym('dFTtildej', NMuscle,d);
+    
+    % q_dotdot: remember, we're using implicit formulation. Therefore,
+    % accelerations are treated as "controls".
+    Aj = MX.sym('Aj', nq.all,d); 
+
+
+
+    % ------- Experimental Data to Track ------- %
+    Qs_scaled_k = MX.sym('Qs_scaled_k', size(Qs_res_interpfilt_scaled_aux, 2));
+    Qs_scaled_j = MX.sym('Qs_scaled_j',size(Qs_res_interpfilt_scaled_aux, 2), d);
+    Qs_scaled_kj = [Qs_scaled_k Qs_scaled_j];
+    
+    Qdots_scaled_k = MX.sym('Qdots_scaled_k', size(Qs_res_interpfilt_scaled_aux, 2));
+    Qdots_scaled_j = MX.sym('Qdots_scaled_j', size(Qs_res_interpfilt_scaled_aux, 2), d);
+    Qdots_scaled_kj = [Qdots_scaled_k Qdots_scaled_j];
+    
+    num_grfs = 6;
+    GRF_scaled_k = MX.sym('GRF_scaled_k', num_grfs); 
+    GRF_scaled_j = MX.sym('GRF_scaled_j', num_grfs, d); 
+    GRF_scaled_kj = [GRF_scaled_k GRF_scaled_j];
+
+    num_grm = 6;
+    GRM_scaled_k = MX.sym('GRM_scaled_k', num_grm); 
+    GRM_scaled_j = MX.sym('GRM_scaled_j', num_grm, d); 
+    GRM_scaled_kj = [GRM_scaled_k GRM_scaled_j];
 
 
 
