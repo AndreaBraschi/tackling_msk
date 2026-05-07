@@ -8,12 +8,12 @@ function params = getMTparameters(model, muscleNames)
 
 import org.opensim.modeling.*
 
-NMuscles = length(muscleNames);
-params = zeros(5, NMuscles);
+num_muscles = length(muscleNames);
+params = zeros(5, num_muscles);
 
 muscles = model.getMuscles();
 
-for i = 1:NMuscles
+for i = 1:num_muscles
    muscle = muscles.get(muscleNames{i});
    params(1,i) = muscle.getMaxIsometricForce();
    params(2,i) = muscle.getOptimalFiberLength();

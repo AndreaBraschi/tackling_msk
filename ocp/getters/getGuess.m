@@ -96,6 +96,7 @@ guess.Qdotdots_col = Qdotdots_spline_col.data;
 
 
 % ----- Muscle variables ----- %
+% mesh end-points
 a = 0.1 * ones(T, num_muscles);
 vA = 0.01 * ones(T, num_muscles);
 FTtilde = 0.1 * ones(T, num_muscles);
@@ -107,12 +108,22 @@ guess.FTtilde = FTtilde./scaling.FTtilde;
 guess.vA  = (vA)./scaling.vA;
 guess.dFTtilde = (dFTtilde)./scaling.dFTtilde;
 
+% collocation points
+a_col = 0.1 * ones(T, num_muscles);
+FTtilde_col = 0.1 * ones(T, num_muscles);
+dFTtilde_col = 0.01 * ones(T, num_muscles);
+
+% scale
+guess.a_col = (a_col)./scaling.a;
+guess.FTtilde_col = FTtilde_col./scaling.FTtilde;
+guess.dFTtilde_col = (dFTtilde_col)./scaling.dFTtilde;
+
+
 
 % Torque actuators
 guess.a_a = 0.1*ones(T, num_actuators);
 guess.e_a = 0.1*ones(T, num_actuators);
-
-
+guess.a_a_col= 0.01 * ones(T, num_muscles);
 
 
 
