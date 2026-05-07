@@ -1,0 +1,207 @@
+{
+    "auxSTERNrjnt_r1_con": {
+        "dependent_coordinate": "rollRSCA",
+        "independent_coordinate": "auxSTERNrjnt_r1",
+        "coupling": "linear",
+        "coefficients": [4.99, 0]
+    },
+
+    "auxSTERNrjnt_r2_con": {
+        "dependent_coordinate": "pitchRSCA",
+        "independent_coordinate": "auxSTERNrjnt_r2",
+        "coupling": "linear",
+        "coefficients": [-0.5056, 0]
+    },
+
+    "auxSTERNrjnt_r3_con": {
+        "dependent_coordinate": "yawRSCA",
+        "independent_coordinate": "auxSTERNrjnt_r3",
+        "coupling": "linear",
+        "coefficients": [0.7842, 0]
+    },
+
+    "auxSTERNljnt_r1_con": {
+        "dependent_coordinate": "rollLSCA",
+        "independent_coordinate": "auxSTERNljnt_r1",
+        "coupling": "linear",
+        "coefficients": [4.99, 0]
+    },
+    "auxSTERNljnt_r2_con": {
+        "dependent_coordinate": "pitchLSCA",
+        "independent_coordinate": "auxSTERNljnt_r2",
+        "coupling": "linear",
+        "coefficients": [-0.5056, 0]
+    },
+
+    "auxSTERNljnt_r3_con": {
+        "dependent_coordinate": "yawLSCA",
+        "independent_coordinate": "auxSTERNljnt_r3",
+        "coupling": "linear",
+        "coefficients": [0.7842, 0]
+    },
+
+    "aux7jnt_r1_con": {
+        "dependent_coordinate": "aux7jnt_r1",
+        "independent_coordinate": "auxt1jnt_r1",
+        "coupling": "linear",
+        "coefficients": [0.13701, 0]
+    },
+
+    "aux7jnt_r2_con": {
+        "dependent_coordinate": "aux7jnt_r2",
+        "independent_coordinate": "auxt1jnt_r2",
+        "coupling": "linear",
+        "coefficients": [0.18797, 0]
+    },
+    "aux7jnt_r3_con": {
+        "dependent_coordinate": "aux7jnt_r3",
+        "independent_coordinate": "auxt1jnt_r3",
+        "coupling": "linear",
+        "coefficients": [0.18697, 0]
+    },
+    "aux6jnt_r1_con": {
+        "dependent_coordinate": "aux6jnt_r1",
+        "independent_coordinate": "auxt1jnt_r1",
+        "coupling": "linear",
+        "coefficients": [0.15699, 0]
+    },
+
+    "aux6jnt_r2_con": {
+        "dependent_coordinate": "aux6jnt_r2",
+        "independent_coordinate": "auxt1jnt_r2",
+        "coupling": "linear",
+        "coefficients": [0.21899, 0]
+    },
+
+    "aux6jnt_r3_con": {
+        "dependent_coordinate": "aux6jnt_r3",
+        "independent_coordinate": "auxt1jnt_r3",
+        "coupling": "linear",
+        "coefficients": [0.21999, 0]
+    },
+
+    "aux5jnt_r1_con": {
+        "dependent_coordinate": "aux5jnt_r1",
+        "independent_coordinate": "auxt1jnt_r1",
+        "coupling": "linear",
+        "coefficients": [0.21599, 0]
+    },
+
+    "aux5jnt_r2_con": {
+        "dependent_coordinate": "aux5jnt_r2",
+        "independent_coordinate": "auxt1jnt_r2",
+        "coupling": "linear",
+        "coefficients": [0.21899, 0]
+    },
+    "aux5jnt_r3_con": {
+        "dependent_coordinate": "aux5jnt_r3",
+        "independent_coordinate": "auxt1jnt_r3",
+        "coupling": "linear",
+        "coefficients": [0.21999, 0]
+    },
+
+    "aux4jnt_r1_con": {
+        "dependent_coordinate": "aux4jnt_r1",
+        "independent_coordinate": "auxt1jnt_r1",
+        "coupling": "linear",
+        "coefficients": [0.21599, 0]
+    },
+
+    "aux4jnt_r2_con": {
+        "dependent_coordinate": "aux4jnt_r2",
+        "independent_coordinate": "auxt1jnt_r2",
+        "coupling": "linear",
+        "coefficients": [0.21899, 0]
+    },
+
+    "aux4jnt_r3_con": {
+        "dependent_coordinate": "aux4jnt_r3",
+        "independent_coordinate": "auxt1jnt_r3",
+        "coupling": "linear",
+        "coefficients": [0.16499, 0]
+    },
+
+    "aux3jnt_r1_con": {
+        "dependent_coordinate": "aux3jnt_r1",
+        "independent_coordinate": "auxt1jnt_r1",
+        "coupling": "linear",
+        "coefficients": [0.19600, 0]
+    },
+
+    "aux3jnt_r2_con": {
+        "dependent_coordinate": "aux3jnt_r2",
+        "independent_coordinate": "auxt1jnt_r2",
+        "coupling": "linear",
+        "coefficients": [0.09400, 0]
+    },
+
+    "aux3jnt_r3_con": {
+        "dependent_coordinate": "aux3jnt_r3",
+        "independent_coordinate": "auxt1jnt_r3",
+        "coupling": "linear",
+        "coefficients": [0.11000, 0]
+    },
+
+    "aux1jnt_r1_con": {
+        "dependent_coordinate": "aux1jnt_r1",
+        "independent_coordinate": "aux2jnt_r1",
+        "coupling": "linear",
+        "coefficients": [0.50000, 0]
+    },
+    
+    "aux1jnt_r2_con": {
+        "dependent_coordinate": "aux1jnt_r2",
+        "independent_coordinate": "aux2jnt_r2",
+        "coupling": "linear",
+        "coefficients": [0.11100, 0]
+    },
+
+    "aux1jnt_r3_con": {
+        "dependent_coordinate": "aux1jnt_r3",
+        "independent_coordinate": "aux2jnt_r3",
+        "coupling": "linear",
+        "coefficients": [0.55600, 0]
+    },
+
+    "arm_right_clavicle_yaw": {
+        "dependent_coordinate": "auxSTERNrjnt_r3",
+        "independent_coordinate": "arm_flex_r",
+        "coupling": "cubic",
+        "coefficients": [-1.9404483e-05, 0.07427031, 0.05278571, -0.00199342]
+    },
+
+    "arm_right_clavicle_roll": {
+        "dependent_coordinate": "auxSTERNrjnt_r1",
+        "independent_coordinate": "arm_flex_r",
+        "coupling": "cubic",
+        "coefficients": [-0.01250609, 0.03396739, 0.0388224, 0.18069325]
+    },
+
+    "arm_right_clavicle_pitch": {
+        "dependent_coordinate": "auxSTERNrjnt_r2",
+        "independent_coordinate": "arm_flex_r",
+        "coupling": "cubic",
+        "coefficients": [-0.00981185, 0.04750721, 0.05118978, 0.39978543]
+    },
+
+    "arm_left_clavicle_yaw": {
+        "dependent_coordinate": "auxSTERNljnt_r3",
+        "independent_coordinate": "arm_flex_l",
+        "coupling": "cubic",
+        "coefficients": [-1.9404483e-05, 0.07427031, 0.05278571, -0.00199342]
+    },
+
+    "arm_left_clavicle_roll": {
+        "dependent_coordinate": "auxSTERNljnt_r1",
+        "independent_coordinate": "arm_flex_l",
+        "coupling": "cubic",
+        "coefficients": [-0.01250609, 0.03396739, 0.0388224, 0.18069325]
+    },
+    
+    "arm_left_clavicle_pitch": {
+        "dependent_coordinate": "auxSTERNljnt_r2",
+        "independent_coordinate": "arm_flex_l",
+        "coupling": "cubic",
+        "coefficients": [-0.00981185, 0.04750721, 0.05118978, 0.39978543]
+    }
+}
