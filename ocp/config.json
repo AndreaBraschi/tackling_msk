@@ -5,6 +5,18 @@
         "method": "radau",
     },
 
+    "W": {
+        "q": 125,
+        "q_dot": 25,
+        "acc": 0.001,
+        "GRF": 10,
+        "GRM": 10,
+        "a": 5,
+        "u": 0.03,
+        "vA": 0.5
+        "pelvis": 2
+    },
+    
     "dof_names_spanned_by_muscles": ["arm_flex_l", "arm_add_l", "arm_rot_l", "arm_flex_r", "arm_add_r", "arm_rot_r",
     "auxt1jnt_r3", "auxt1jnt_r1", "auxt1jnt_r2",
     "auxt1jnt_t3", "auxt1jnt_t1", "auxt1jnt_t2",
