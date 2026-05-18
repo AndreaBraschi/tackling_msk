@@ -1,4 +1,4 @@
-function [x_all, acc_all] = apply_constraints(x, acc, config_struct, q_list, q_all_list)
+function [x_all, acc_all] = apply_constraints(x, acc, q_list, q_all_list)
 
 % This function applies the registered kinematic constraints in the
 % config.json file. Furthermore, it outputs the new complete set of q,
@@ -20,6 +20,10 @@ import casadi.*
 % add kinematic coupling functions
 path_name = "../kinematic_coupling";
 addpath(path_name);
+
+% read config file
+json_str = fileread("config.json");
+config_struct = jsondecode(json_str);
 
 q = x(1:2:end);
 q_dot = x(2:2:end);
