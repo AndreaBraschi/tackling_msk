@@ -600,9 +600,10 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
         
         
         % --------------------------------------------------------------- %
-        %   compute (scaled) equality constraints at collocation points   %
-        % --------------------------------------------------------------- %
+        %                      Equality constraints                       %
+        % --------------------------------------------------------------- %        
         
+        % Muscle activation time derivative
         eq_constr{end+1} = (mesh_T * vAk_nsc - a_dot)./scaling.a;
         
         % Contraction dynamics (implicit formulation)     
@@ -614,13 +615,12 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
         eq_constr{end+1} = (mesh_T * Aj_nsc(:, i) - Qdots_nsc_dot)./scaling.QsQdots(2:2:end)';
 
 
-        % Arm activation dynamics (explicit formulation)   
+        % Torque actuator activation dynamics (explicit formulation)   
         da_dt_i = activation_dynamics_function(e_ak, a_akj(:, i+1));
         eq_constr{end+1} = (mesh_T * da_dt_i - a_a_dot)./scaling.a_a;
 
 
-        % --------------------------------------------------------------- %
-        %                       Path constraints                          %
+        % Path constraints 
         % --------------------------------------------------------------- %
         % here, we want to impose the constraint that the net joint moments 
         % coming out of the external function must be equal to the sum of:
@@ -637,6 +637,11 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
             % get DoF name
             dof_name = dof_names(:, n);
 
+            % find the index of the DoF wrt the full list of coordinates
+            idx = strcmp(q_names, dependent_coord_name);
+
+
+            % ----------- active elements ----------- %
             % get moment arms
             moment_arms = dM_i(indices, n);
 
@@ -646,20 +651,15 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
             % retrieve function
             M_function = M_functions.(dof_name);
             M_computed = M_function(moment_arms, forces);
-
+            
             % add difference to equality constraint
-            eq_constr{end+1} = Ti(jointi.knee_add.r,1)-(T_knee_add_r + Tau_passj.knee_add.r);            
+            eq_constr{end+1} = Ti(idx, 1) - M_computed;            
         
         end
+
+        % Contraction dynamics (implicit formulation)
         
-    end
-
-
-
         
-
-
- 
     end
 
 
