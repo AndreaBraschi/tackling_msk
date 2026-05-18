@@ -15,11 +15,11 @@ for i=1:size(qs,1)
 end
 
 % This will likely throw out an error as CasADi doesn't support 3D arrays %
-diff_mat_q = SX(n_points, n_coeff, n_dof);
+diff_mat_q = SX(n_coeff, n_dof);
 
 for j=1:n_dof
-    for i=1:size(qs,1)
-        diff_mat_q(i,:,j) = eval_der_monomial(qs(i,:), monomial_exponents, j);
+    for i=1:size(qs, 1)
+        diff_mat_q(:, j) = eval_der_monomial(qs(i,:), monomial_exponents, j);
     end
 end
 
