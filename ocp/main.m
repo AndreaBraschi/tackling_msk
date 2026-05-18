@@ -1,4 +1,4 @@
-function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials, err_poly, Options, W)
+function res = track_sim(model, trial_path, dll_filename)
 
 % --------------------------------------------------------------------------
 % track_sim
@@ -13,13 +13,7 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
 %   - dll_filename (str): dll file that contains the external function used
 %     in the optimisation.
 % 
-%   - useReducedPolynomials
-%   
-%   - err_poly:
-%
-%   - Options:
-%
-%   - W
+
 %
 % OUTPUT:
 %   - guess -
@@ -31,6 +25,11 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
     import casadi.*
     import org.opensim.modeling.*
     
+    % read project config file
+    json_str = fileread("config.json");
+    config_struct = jsondecode(json_str);
+
+   
     % parallelisation settings
     parallelMode = 'thread';
     num_threads = 8; % Number of threads used in parallel.
@@ -73,46 +72,12 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
     addpath(genpath(pathPolynomial));
     
     
-   
-    nametrial.id = trial_id;
-
-    % simulation settings - add them to Options structure
-    Options.usePelvisResMom = 1;    % use pelvis residual moments
-
-    Options.useReducedPolynomials = useReducedPolynomials;  % use reduced polynomial coeffcients
-    Options.useReoptimizedPoly = 1;
-
-    Options.err_poly = err_poly;
-    Options.maxsmoothness = 'MellowMax'; %options: logSum, MellowMax, nosmooth
-
-    tol_ipopt = 4;    % tolerance (means 1e-(tol_ipopt))
-
-    setup.derivatives = 'AD_Recorder'; % Algorithmic differentiation / Recorder     
-
-    % Available linear solvers
-    linear_solvers = {'mumps','ma27','ma57','ma77','ma86','ma97'}; 
-    if Options.useReducedPolynomials
-        if Options.useReoptimizedPoly
-            poly=['red' num2str(Options.err_poly) '_reopt'];
-        else
-            poly=['red' num2str(Options.err_poly)];
-        end
-    else
-        poly=['full' num2str(Options.err_poly)];
-    end
-    
-    % The filename used to save the results depends on the settings 
-    if ~exist('savename_suffix', 'var')
-        savename_suffix = '';
-    end
-    savename = ['_', nametrial.id, '_', num2str(Options.IGn), '_poly', poly, savename_suffix];
-    savename2 = ['_', nametrial.id, '_', num2str(Options.IGn), '_poly', poly];
-    
-    
+  
     % Collocation scheme
-    N = 40;   % number of mesh intervals
-    d = 3; % number of collocation points per mesh interval
-    method = 'radau'; % collocation method
+    N = config_struct.("collocation").("number_of_segments");   % number of mesh intervals
+    d = config_struct.("collocation").("num_points"); % number of collocation points per mesh interval
+    method = config_struct.("collocation").("method"); % collocation method
+    
     [tau_root, C, D, B] = collocationScheme(d, method); % collocation scheme.
     
     
@@ -165,20 +130,20 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
     nametrial.IK    = [nametrial.id, "_IK"];
 
     Qs = readMotQs(fullfile(trial_path, nametrial.IK));
+
+    dof_indices_all = 1:size(Qs.colheaders, 1);
+
+    % read from config structure the names of the DoFs that are spanned by
+    % the muscles.
+    dof_names = config_struct.("dof_names_spanned_by_muscles");
     
     % find which indices of Qs correspond to the DoFs that are spanned by
     % the neck muscles.
-    dof_names = {'arm_flex_l', 'arm_add_l', 'arm_rot_l', 'arm_flex_r', 'arm_add_r', 'arm_rot_r', ...
-    'auxt1jnt_r3', 'auxt1jnt_r1', 'auxt1jnt_r2', ...
-    'auxt1jnt_t3', 'auxt1jnt_t1', 'auxt1jnt_t2', ...
-    'aux7jnt_t3', 'aux7jnt_t1', 'aux7jnt_t2', ...
-    'aux6jnt_t3', 'aux6jnt_t1', 'aux6jnt_t2', ...
-    'aux5jnt_t3', 'aux5jnt_t1', 'aux5jnt_t2', ...
-    'aux4jnt_t3', 'aux4jnt_t1', 'aux4jnt_t2', ...
-    'aux3jnt_t3', 'aux3jnt_t1', 'aux3jnt_t2', ...
-    'aux2jnt_r3', 'aux2jnt_r1', 'aux2jnt_r2'};
-    
     dof_indices = cellfun(@(name) find(strcmp(Qs.colheaders, name)), dof_names, 'UniformOutput', false);
+
+    % now find the indices of all the other DoFs that aren't spanned by
+    % muscles.
+    other_indices = setdiff(dof_indices_all, dof_indices);
 
     dt_ik = Qs.time(2) - Qs.time(1);
 
@@ -463,6 +428,9 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
     activation_dynamics_function = torque_activation_dynamics_casadi(pathMuscleModel, num_act);
 
     % --- sum of squares --- %
+    % q
+    J_q = sum_of_squares('q', num_q);
+    
     % q_dot
     J_q_dot = sum_of_squares('q_dot', num_q);
 
@@ -519,11 +487,17 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
     
     % Initialise cost function value: J
     J = 0;
+
+    % Read the weights of the cost function from config file
+    W = config_struct.("W");
     
     % for one segment:
     % loop through the collocation points
     for i = 1:d 
+        
         [Xkj_nsc_all, Aj_all] = apply_constraints(Xkj_nsc(:, i + 1), Aj(:, i + 1));
+        
+        % evaluate external function
         Ti = F([Xkj_nsc_all, Aj_all]);
 
         % --- compute: lMT (muscle-tendon length), d_lMT/dt, MA(moment arm)
@@ -538,7 +512,8 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
         [lMT_i, vMT_i, dM_i] = f_muscle(dof_i, dof_dot_i);
 
         % Get muscle-tendon forces and derive Hill-equilibrium 
-        [hill_err_i, FT_i, ~, ~, ~] = force_equilibrium(akj(:, i+1), FTtildekj_nsc(:, i+1), dFTtildej_nsc(:, i), lMT_i, vMT_i);
+        [hill_err_i, FT_i, ~, ~, ~] = force_equilibrium(akj(:, i+1), ...
+            FTtildekj_nsc(:, i+1), dFTtildej_nsc(:, i), lMT_i, vMT_i);
 
         
         % --------------------------------------------------------------- %
@@ -560,38 +535,36 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
         q_diff = Q_kj_nsc - Qs_scaled_kj(:, i + 1);
         q_dot_diff = Qdots_nsc_dot - Qdot_kj_nsc(:, i + 1);
         
-        % vectorise weight of the error
-        weight_qs_vec = W.Qs * ones(num_q, 1);
 
         % ---------------- Terms ---------------- %
         % Q
-        q_term = B(i+1) * (q_diff' * diag(weight_qs_vec) * q_diff) * mesh_T;
+        q_term = W.q * B(i + 1) * J_q(q_diff) * mesh_T;
 
         % Q dot
-        q_dot_term = B(i + 1) * J_q_dot(q_dot_diff);
+        q_dot_term = W.q_dot * B(i + 1) * J_q_dot(q_dot_diff) * mesh_T;
 
         % GRF
-        Ti_GRF_scaled = Tj(GRFi.all, 1)./scaling.GRF';
-        GRF_term = B(i + 1) * (J_GRF(Ti_GRF_scaled - GRF_scaled_kj(:, i))) * mesh_T;
+        Ti_GRF_scaled = Tj(num_q + 1, 1)./scaling.GRF';
+        GRF_term = W.GRF * B(i + 1) * (J_GRF(Ti_GRF_scaled - GRF_scaled_kj(:, i))) * mesh_T;
 
         % GRM
         Ti_GRM_scaled = Tj(GRFi.all, 1)./scaling.GRM';
-        GRM_term = B(i + 1) * (J_GRM(Ti_GRM_scaled - GRM_scaled_kj(:, i))) * mesh_T;
+        GRM_term = W.GRM * B(i + 1) * (J_GRM(Ti_GRM_scaled - GRM_scaled_kj(:, i))) * mesh_T;
 
         % muscle activation
-        act_term = B(i + 1) * (J_muscles_act(akj(:, i + 1))) * mesh_T;
+        act_term = W.a * B(i + 1) * (J_muscles_act(akj(:, i + 1))) * mesh_T;
 
         % muscle activation time derivative
-        act_der_term = B(i + 1) * (J_muscles_act_der(vAk) * mesh_T);
+        act_der_term = W.vA * B(i + 1) * (J_muscles_act_der(vAk) * mesh_T);
 
         % Q dot dot: Accelerations
-        q_dot_dot_term = B(i + 1) * (J_q_dot_dot(Aj(:, i)) * mesh_T);
+        q_dot_dot_term = W.acc * B(i + 1) * (J_q_dot_dot(Aj(:, i)) * mesh_T);
 
         % derivative of MT force
         dMTf_dt_term = B(i + 1) * (J_MT_unit(dFTtildej(:, i)) * mesh_T);
 
         % pelvis residual term
-        pelvis_term = B(i + 1) * (J_pelvis(pelvis_res_j(:, i)) * mesh_T);
+        pelvis_term = W.pelvis * B(i + 1) * (J_pelvis(pelvis_res_j(:, i)) * mesh_T);
         
         
         % ------------ add them up ----------- %
@@ -658,7 +631,7 @@ function res = track_sim(model, trial_path, dll_filename, useReducedPolynomials,
         end
 
         % Contraction dynamics (implicit formulation)
-        
+
         
     end
 
