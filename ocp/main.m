@@ -592,6 +592,10 @@ function res = track_sim(model, trial_path, dll_filename)
         da_dt_i = activation_dynamics_function(e_ak, a_akj(:, i+1));
         eq_constr{end+1} = (mesh_T * da_dt_i - a_a_dot)./scaling.a_a;
 
+        % Computed torque from CasADi should be equal to the net moments
+        % coming out of the OpenSim model. We do this only for the DoFs
+        % that aren't spanned by the muscles.
+        eq_constr{end+1} = Ti(other_indices, 1)./scaling.a_a - a_akj(:, i+1);
 
         % Path constraints 
         % --------------------------------------------------------------- %
@@ -631,7 +635,7 @@ function res = track_sim(model, trial_path, dll_filename)
         end
 
         % Contraction dynamics (implicit formulation)
-
+        eq_constr{end+1} = Hilldiffj;
         
     end
 
