@@ -99,32 +99,7 @@ function res = track_sim(model, trial_path, dll_filename)
     cd(pathmain);
 
 
-    % --------------------- Model Information --------------------- % 
-    % 1) Mass
-    state = model.initSystem();
-    bodyMass = model.getTotalMass(state);
-    bodyWeight = bodyMass * 9.81;
-
-    % 2) Model sets
-    coordinateSet = model.getCoordinateSet();
-    forceSet = model.getForceSet();
-    muscleSet = forceSet.getMuscles();
-    actuatorSet = forceSet.getActuators();
-    q_names = getItemNames(coordinateSet);
-
-
-    % 3) Muscle Tendon Unit parameters
-    muscleNames = getItemNames(muscleSet);
-    MTparameters = getMTparameters(model, muscleNames);
-
-    % 4) information on the model
-    num_body_dof = 6;  % the number of theoretical DoFs that a rigid body has
-    num_q = coordinateSet.getSize();  % number of coordinates
-    num_muscles = muscleSet.getSize();  % number of muscles
-    num_act = actuatorSet.getSize();  % number of actuators
-
-    
-% -------------------------- Experimental Data -------------------------- % 
+    % ------------------------ Experimental Data ------------------------ % 
     % load IK
     nametrial.GRF   = [nametrial.id, "grf"];
     nametrial.IK    = [nametrial.id, "_IK"];
@@ -145,6 +120,12 @@ function res = track_sim(model, trial_path, dll_filename)
     % muscles.
     other_indices = setdiff(dof_indices_all, dof_indices);
 
+    % read names of dependent coordinates
+    dependent_coord_names = config_struct.("dependent_coord_names");
+    % find dependent coordinates indices
+    dependent_coord_idx = cellfun(@(name) find(strcmp(Qs.colheaders, name)), dependent_coord_names, 'UniformOutput', false);
+    
+    
     dt_ik = Qs.time(2) - Qs.time(1);
 
     % load Ground Reaction Forces
@@ -153,6 +134,26 @@ function res = track_sim(model, trial_path, dll_filename)
 
     % read initial and final time from IK 
     time_opt = [Qs.time(1, 1) Qs.time(end, 1)];
+
+
+    % --------------------- model parameters --------------------- % 
+    % Model sets
+    coordinateSet = model.getCoordinateSet();
+    forceSet = model.getForceSet();
+    muscleSet = forceSet.getMuscles();
+    q_names = getItemNames(coordinateSet);
+
+
+    % Muscle Tendon Unit parameters
+    muscleNames = getItemNames(muscleSet);
+    MTparameters = getMTparameters(model, muscleNames);
+
+    % generic parameters
+    num_body_dof = 6;  % the number of theoretical DoFs that a rigid body has
+    num_q_all = coordinateSet.getSize();  % number of coordinates (independent and dependent)
+    num_q_dep = size(dependent_coord_names, 1);
+    num_q_ind = num_q_all - num_q_dep;
+    num_muscles = muscleSet.getSize();  % number of muscles
 
 
     % -------------------------- Interpolation -------------------------- %
@@ -223,7 +224,7 @@ function res = track_sim(model, trial_path, dll_filename)
     % 1) collocation points
     % Create a symbolic variable within the problem and assign it a number
     % of dimensions and points along the trajectory.
-    dims = 2 * num_q;
+    dims = 2 * num_q_ind;
     points = N * d;  % we have d-collocation points x N-segments
     X_col = opti.variable(dims, points);
     
@@ -415,11 +416,8 @@ function res = track_sim(model, trial_path, dll_filename)
     Aj_nsc = Aj.*(scaling.Qdotdots');  
     
     vAk_nsc = vAk.*scaling.vA;  
-    
-    % Structure W with 
-    W.Qs = 125;
-    
-    
+
+     
     % ---------- CasADi functions ---------- %
     f_muscle = buildMuscleFunction(pathMuscleModel);
     force_equilibrium = buildForceEquilibriumFunc(pathMuscleModel, num_muscles, MTparameters);
