@@ -2,7 +2,7 @@ import os
 import json
 from numpy import array, arange, einsum, concatenate
 from osim_utils.rotations import QUALYSIS_TO_OPENSIM
-from opensim_utils.write import writeMotFromDataFrame
+from osim_utils.write import writeMotFromDataFrame
 import matplotlib.pyplot as plt
 from pandas import DataFrame
 from numpy import float64
