@@ -81,7 +81,7 @@ def write_grf(json_filepath: str, output_dir: str, hz: float) -> int:
 
     plt.tight_layout()
     plt.legend()
-    plt.savefig(os.path.join(fig_dir, filename, "qualisys_force.png"))
+    plt.savefig(os.path.join(fig_dir, "qualisys_force.png"))
     # plt.show()
     plt.close()
 
@@ -104,7 +104,7 @@ def write_grf(json_filepath: str, output_dir: str, hz: float) -> int:
     plt.legend()
 
     plt.tight_layout()
-    plt.savefig(os.path.join(fig_dir, filename, "opensim_force.png"))
+    plt.savefig(os.path.join(fig_dir, "opensim_force.png"))
     #plt.show()
     plt.close()
 
@@ -128,7 +128,7 @@ def write_grf(json_filepath: str, output_dir: str, hz: float) -> int:
     plt.legend()
 
     plt.tight_layout()
-    plt.savefig(os.path.join(fig_dir, filename, "qualisys_moment.png"))
+    plt.savefig(os.path.join(fig_dir, "qualisys_moment.png"))
     plt.close()
 
 
@@ -150,7 +150,7 @@ def write_grf(json_filepath: str, output_dir: str, hz: float) -> int:
     plt.legend()
 
     plt.tight_layout()
-    plt.savefig(os.path.join(fig_dir, filename, "opensim_moment.png"))
+    plt.savefig(os.path.join(fig_dir, "opensim_moment.png"))
     plt.close()
 
 
