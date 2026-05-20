@@ -1,8 +1,8 @@
 {
     "collocation": {
         "number_of_segments": 40,
-        "collocation_points": 3,
-        "method": "radau",
+        "num_points": 3,
+        "method": "radau"
     },
 
     "W": {
@@ -13,7 +13,7 @@
         "GRM": 10,
         "a": 5,
         "u": 0.03,
-        "vA": 0.5
+        "vA": 0.5,
         "pelvis": 2
     },
     
@@ -28,22 +28,22 @@
     "aux2jnt_r3", "aux2jnt_r1", "aux2jnt_r2"
     ],
 
-    "dofs_with_no_passive_elements": [
-    "auxt1jnt_r3", "auxt1jnt_r1", "auxt1jnt_r2",
-    "auxt1jnt_t3", "auxt1jnt_t1", "auxt1jnt_t2",
-    "aux7jnt_t3", "aux7jnt_t1", "aux7jnt_t2",
-    "aux6jnt_t3", "aux6jnt_t1", "aux6jnt_t2",
-    "aux5jnt_t3", "aux5jnt_t1", "aux5jnt_t2",
-    "aux4jnt_t3", "aux4jnt_t1", "aux4jnt_t2",
-    "aux3jnt_t3", "aux3jnt_t1", "aux3jnt_t2",
-    "aux2jnt_r3", "aux2jnt_r1", "aux2jnt_r2"
-     ],
-
+    "dependent_coord_names": ["rollRSCA", "pitchRSCA", "yawRSCA",
+                              "rollLSCA", "pitchLSCA", "yawLSCA",    
+                              "aux7jnt_r1", "aux7jnt_r2", "aux7jnt_r3",
+                              "aux6jnt_r1", "aux6jnt_r2", "aux6jnt_r3", 
+                              "aux5jnt_r1", "aux5jnt_r2", "aux5jnt_r3",
+                              "aux4jnt_r1", "aux4jnt_r2", "aux4jnt_r3",
+                              "aux3jnt_r1", "aux3jnt_r2", "aux3jnt_r3",
+                              "aux1jnt_r1", "aux1jnt_r2", "aux1jnt_r3",
+                              "auxSTERNrjnt_r3", "auxSTERNrjnt_r1", "auxSTERNrjnt_r2",
+                              "auxSTERNljnt_r3", "auxSTERNljnt_r1", "auxSTERNljnt_r2"
+                             ],
+    
     "force_indices": {
     "rGRF": [1, 2, 3],
     "lGRF": [4, 5, 6], 
     "rGRM": [37, 38, 39],
     "lGRM": [40, 41, 42]
-    },
-
+    }
 }
