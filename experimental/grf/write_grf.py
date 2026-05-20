@@ -70,17 +70,19 @@ def write_grf(json_filepath: str, output_dir: str, hz: float) -> int:
     axes[0].plot(time, force_one_q[:, 0], color='coral', label="right")
     axes[0].plot(time, force_two_q[:, 0], color='seagreen', label="left")
     axes[0].set_title('Qualysis x')
+    axes[0].legend()
 
     axes[1].plot(time, force_one_q[:, 1], color='coral', label="right")
     axes[1].plot(time, force_two_q[:, 1], color='seagreen', label="left")
     axes[1].set_title('Qualysis y')
+    axes[1].legend()
 
     axes[2].plot(time, force_one_q[:, 2], color='coral', label="right")
     axes[2].plot(time, force_two_q[:, 2], color='seagreen', label="left")
     axes[2].set_title('Qualysis z')
+    axes[2].legend()
 
     plt.tight_layout()
-    plt.legend()
     plt.savefig(os.path.join(fig_dir, "qualisys_force.png"))
     # plt.show()
     plt.close()
@@ -91,17 +93,17 @@ def write_grf(json_filepath: str, output_dir: str, hz: float) -> int:
     axes[0].plot(time, force_one[:, 0], color='coral', label='right')
     axes[0].plot(time, force_two[:, 0], color='seagreen', label='left')
     axes[0].set_title('OpenSim x')
-    plt.legend()
+    axes[0].legend()
 
     axes[1].plot(time, force_one[:, 1], color='coral', label='right')
     axes[1].plot(time, force_two[:, 1], color='seagreen', label='left')
     axes[1].set_title('OpenSim y')
-    plt.legend()
+    axes[1].legend()
 
     axes[2].plot(time, force_one[:, 2], color='coral', label='right')
     axes[2].plot(time, force_two[:, 2], color='seagreen', label='left')
     axes[2].set_title('OpenSim z')
-    plt.legend()
+    axes[2].legend()
 
     plt.tight_layout()
     plt.savefig(os.path.join(fig_dir, "opensim_force.png"))
@@ -115,17 +117,17 @@ def write_grf(json_filepath: str, output_dir: str, hz: float) -> int:
     axes[0].plot(time, moment_one_q[:, 0], color='coral', label="right")
     axes[0].plot(time, moment_two_q[:, 0], color='seagreen', label="left")
     axes[0].set_title('Qualysis x')
-    plt.legend()
+    axes[0].legend()
 
     axes[1].plot(time, moment_one_q[:, 1], color='coral', label="right")
     axes[1].plot(time, moment_two_q[:, 1], color='seagreen', label="left")
     axes[1].set_title('Qualysis y')
-    plt.legend()
+    axes[1].legend()
 
     axes[2].plot(time, moment_one_q[:, 2], color='coral', label="right")
     axes[2].plot(time, moment_two_q[:, 2], color='seagreen', label="left")
     axes[2].set_title('Qualysis z')
-    plt.legend()
+    axes[2].legend()
 
     plt.tight_layout()
     plt.savefig(os.path.join(fig_dir, "qualisys_moment.png"))
@@ -137,17 +139,17 @@ def write_grf(json_filepath: str, output_dir: str, hz: float) -> int:
     axes[0].plot(time, moment_one[:, 0], color='coral', label="right")
     axes[0].plot(time, moment_two[:, 0], color='seagreen', label="left")
     axes[0].set_title('Qualysis x')
-    plt.legend()
+    axes[1].legend()
 
     axes[1].plot(time, moment_one[:, 1], color='coral', label="right")
     axes[1].plot(time, moment_two[:, 1], color='seagreen', label="left")
     axes[1].set_title('Qualysis y')
-    plt.legend()
+    axes[1].legend()
 
     axes[2].plot(time, moment_one[:, 2], color='coral', label="right")
     axes[2].plot(time, moment_two[:, 2], color='seagreen', label="left")
     axes[2].set_title('Qualysis z')
-    plt.legend()
+    axes[2].legend()
 
     plt.tight_layout()
     plt.savefig(os.path.join(fig_dir, "opensim_moment.png"))
