@@ -12,6 +12,9 @@ from numpy.typing import NDArray as ndarray
 def write_grf(json_filepath: str, output_dir: str, hz: float) -> int:
     """
 
+    This function reads the Qualisys force data that was exported as a .json file, converts them to OpenSim convention
+    it finally writes the transformed forces and moments as a .mot file to be used in other OpenSim analysis.
+
     :param json_filepath: path to json file containing the experimental force data
     :param mot_filepath: path mot file that will be written
     :return:
@@ -64,81 +67,91 @@ def write_grf(json_filepath: str, output_dir: str, hz: float) -> int:
     # plot forces
     fig, axes = plt.subplots(1, 3, figsize=(12, 4))
 
-    axes[0].plot(time, force_one_q[:, 0], color='coral', label="force one")
-    axes[0].plot(time, force_two_q[:, 0], color='seagreen', label="force two")
+    axes[0].plot(time, force_one_q[:, 0], color='coral', label="right")
+    axes[0].plot(time, force_two_q[:, 0], color='seagreen', label="left")
     axes[0].set_title('Qualysis x')
 
-    axes[1].plot(time, force_one_q[:, 1], color='coral', label="force one")
-    axes[1].plot(time, force_two_q[:, 1], color='seagreen', label="force two")
+    axes[1].plot(time, force_one_q[:, 1], color='coral', label="right")
+    axes[1].plot(time, force_two_q[:, 1], color='seagreen', label="left")
     axes[1].set_title('Qualysis y')
 
-    axes[2].plot(time, force_one_q[:, 2], color='coral', label="force one")
-    axes[2].plot(time, force_two_q[:, 2], color='seagreen', label="force two")
+    axes[2].plot(time, force_one_q[:, 2], color='coral', label="right")
+    axes[2].plot(time, force_two_q[:, 2], color='seagreen', label="left")
     axes[2].set_title('Qualysis z')
 
     plt.tight_layout()
     plt.legend()
-    #plt.savefig(os.path.join(fig_dir, filename, "qualisys_force.png"))
-    plt.show()
+    plt.savefig(os.path.join(fig_dir, filename, "qualisys_force.png"))
+    # plt.show()
     plt.close()
 
 
     fig, axes = plt.subplots(1, 3, figsize=(12, 4))
 
-    axes[0].plot(time, force_one[:, 0], color='coral', label='force one')
-    axes[0].plot(time, force_two[:, 0], color='seagreen', label='force two')
+    axes[0].plot(time, force_one[:, 0], color='coral', label='right')
+    axes[0].plot(time, force_two[:, 0], color='seagreen', label='left')
     axes[0].set_title('OpenSim x')
+    plt.legend()
 
-    axes[1].plot(time, force_one[:, 1], color='coral', label='force one')
-    axes[1].plot(time, force_two[:, 1], color='seagreen', label='force two')
+    axes[1].plot(time, force_one[:, 1], color='coral', label='right')
+    axes[1].plot(time, force_two[:, 1], color='seagreen', label='left')
     axes[1].set_title('OpenSim y')
+    plt.legend()
 
-    axes[2].plot(time, force_one[:, 2], color='coral', label='force one')
-    axes[2].plot(time, force_two[:, 2], color='seagreen', label='force two')
+    axes[2].plot(time, force_one[:, 2], color='coral', label='right')
+    axes[2].plot(time, force_two[:, 2], color='seagreen', label='left')
     axes[2].set_title('OpenSim z')
+    plt.legend()
 
     plt.tight_layout()
-    plt.legend()
-    #plt.savefig(os.path.join(fig_dir, filename, "opensim_force.png"))
-    plt.show()
+    plt.savefig(os.path.join(fig_dir, filename, "opensim_force.png"))
+    #plt.show()
     plt.close()
 
 
     # plot moments
     fig, axes = plt.subplots(1, 3, figsize=(12, 4))
 
-    axes[0].plot(time, moment_one_q[:, 0], color='coral')
-    axes[0].plot(time, moment_two_q[:, 0], color='seagreen')
+    axes[0].plot(time, moment_one_q[:, 0], color='coral', label="right")
+    axes[0].plot(time, moment_two_q[:, 0], color='seagreen', label="left")
     axes[0].set_title('Qualysis x')
+    plt.legend()
 
-    axes[1].plot(time, moment_one_q[:, 1], color='coral')
-    axes[1].plot(time, moment_two_q[:, 1], color='seagreen')
+    axes[1].plot(time, moment_one_q[:, 1], color='coral', label="right")
+    axes[1].plot(time, moment_two_q[:, 1], color='seagreen', label="left")
     axes[1].set_title('Qualysis y')
+    plt.legend()
 
-    axes[2].plot(time, moment_one_q[:, 2], color='coral')
-    axes[2].plot(time, moment_two_q[:, 2], color='seagreen')
+    axes[2].plot(time, moment_one_q[:, 2], color='coral', label="right")
+    axes[2].plot(time, moment_two_q[:, 2], color='seagreen', label="left")
     axes[2].set_title('Qualysis z')
+    plt.legend()
 
     plt.tight_layout()
     plt.savefig(os.path.join(fig_dir, filename, "qualisys_moment.png"))
+    plt.close()
 
 
     fig, axes = plt.subplots(1, 3, figsize=(12, 4))
 
-    axes[0].plot(time, moment_one[:, 0], color='coral')
-    axes[0].plot(time, moment_two[:, 0], color='seagreen')
+    axes[0].plot(time, moment_one[:, 0], color='coral', label="right")
+    axes[0].plot(time, moment_two[:, 0], color='seagreen', label="left")
     axes[0].set_title('Qualysis x')
+    plt.legend()
 
-    axes[1].plot(time, moment_one[:, 1], color='coral')
-    axes[1].plot(time, moment_two[:, 1], color='seagreen')
+    axes[1].plot(time, moment_one[:, 1], color='coral', label="right")
+    axes[1].plot(time, moment_two[:, 1], color='seagreen', label="left")
     axes[1].set_title('Qualysis y')
+    plt.legend()
 
-    axes[2].plot(time, moment_one[:, 2], color='coral')
-    axes[2].plot(time, moment_two[:, 2], color='seagreen')
+    axes[2].plot(time, moment_one[:, 2], color='coral', label="right")
+    axes[2].plot(time, moment_two[:, 2], color='seagreen', label="left")
     axes[2].set_title('Qualysis z')
+    plt.legend()
 
     plt.tight_layout()
     plt.savefig(os.path.join(fig_dir, filename, "opensim_moment.png"))
+    plt.close()
 
 
     # ----------- write to .mot file ---------- #
