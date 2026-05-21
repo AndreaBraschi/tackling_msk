@@ -45,5 +45,12 @@
     "lGRF": [4, 5, 6], 
     "rGRM": [37, 38, 39],
     "lGRM": [40, 41, 42]
+    },
+
+    "experimental_force_indices": {
+    "rGRF": [8, 9, 10],
+    "lGRF": [2, 3, 4], 
+    "rGRM": [11, 12, 13],
+    "lGRM": [5, 6, 7]
     }
 }

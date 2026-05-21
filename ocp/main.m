@@ -127,7 +127,10 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     
     % load Ground Reaction Forces
     grf_filepath = fullfile(trial_dir, "/grf/", trial_id + ".mot");
-    GRFs = readMotGrf(grf_filepath);
+    GRFs = readMotGrf(grf_filepath, 20);
+    experimental_force_indices = config_struct.("experimental_force_indices");
+    grf_indices = [experimental_force_indices.rGRF'; experimental_force_indices.lGRF'];
+    grm_indices = [experimental_force_indices.rGRM'; experimental_force_indices.lGRM'];
 
 
     % read initial and final time from IK 
@@ -167,8 +170,9 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     time_expi.GRF(2) = find((GRF.time<(time_opt(2) + dt_GRF/2)) & (GRF.time>=(time_opt(2) - dt_GRF/2)));
 
     % ----------------------------- Bounds  ----------------------------- %
-    [bounds, scaling] = getBounds(Qs, GRFs, num_q, num_muscles, num_act);
+    [bounds, scaling] = getBounds(Qs, GRFs, num_q, num_muscles, num_act, experimental_force_indices);
 
+    
     % -------------------------- Initial Guess  ------------------------- %
     guess = getGuess(Qs, num_q, num_muscles, num_act, scaling);
     
@@ -663,10 +667,5 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         Qdots_scaled_col',...
         GRF.val.allinterp_col(:, 2:end)',...
         GRF.MorGF.allinterp_col(:, 2:end)');
-
-
-
-
-
 
 end
