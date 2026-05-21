@@ -16,9 +16,9 @@ function [bounds, scaling] = getBounds(Qs, GRF, num_q, num_muscles, num_act)
 import org.opensim.modeling.*
 
 time = Qs.allfilt(:, 1);
-y = zeros(num_q);
-
 T = size(time, 1);  % period
+
+y = struct('pos', {}, 'vel', {}, 'acc', {});
 dims = num_q * 2;
 
 % Approximate 1st and 2nd derivative of Qs using analytical cubic spline
@@ -27,7 +27,7 @@ dims = num_q * 2;
 % calculate the spline coefficients, given the experimental data
 for i = 2:num_q
     cs = spline(time, Qs.allfilt(:, i));
-    y(i) = eval_spline(cs, time, 2);
+    y(i - 1) = eval_spline(cs, time, 2);
 end
 
 % ----------------------------- Qs bounds ----------------------------- %
