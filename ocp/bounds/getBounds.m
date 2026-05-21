@@ -25,9 +25,9 @@ dims = num_q * 2;
 % derivation.
 % loop through the columns of Qs, starting from index 2 (1 is time), and
 % calculate the spline coefficients, given the experimental data
-for i = 2:num_q
-    cs = spline(time, Qs.allfilt(:, i));
-    y(i - 1) = eval_spline(cs, time, 2);
+for i = 1:num_q
+    cs = spline(time, Qs.allfilt(:, i + 1));
+    y(i) = eval_spline(cs, time, 2);
 end
 
 % ----------------------------- Qs bounds ----------------------------- %
@@ -73,18 +73,18 @@ bounds.Qsdotdot.upper = (bounds.Qsdotdot.upper)./scaling.Qsdotdot;
 % Q = [q(:, 1), q_dot(:, 1), q(:, 2), q_dot(:, 2), ...]
 % Therefore, we need to make sure that the bounds follow the same pattern,
 % as they will be assigned to the X design variables!
-X_lower = reshape([Qs.lower, Qsdot.lower], T, 2, dims);
-X_lower = reshape(permute(X_lower, [1, 3, 2]), T, dims * 2);
+X_lower = reshape([Qs.lower, Qsdot.lower], 2, num_q);
+X_lower = reshape(permute(X_lower, [2, 1]), 1, dims);
 
-X_upper = reshape([Qs.upper, Qsdot.upper], T, 2, dims);
-X_upper = reshape(permute(X_upper, [1, 3, 2]), T, dims * 2);
+X_upper = reshape([Qs.upper, Qsdot.upper], 2, num_q);
+X_upper = reshape(permute(X_upper, [2, 1]), 1, dims);
 
 bounds.X.lower = X_lower;
 bounds.X.upper = X_upper;
 
 % ----------------------------- GRFs bounds ----------------------------- %
-lower_grf = min(GRF.val.all(:,2:end));
-upper_grf = max(GRF.val.all(:,2:end));
+lower_grf = min(GRF.val.all(:, 2:end));
+upper_grf = max(GRF.val.all(:, 2:end));
 
 % extend bounds to give some flexibility
 force_range = abs(upper_grf - lower_grf);
