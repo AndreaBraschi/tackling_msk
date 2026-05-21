@@ -16,7 +16,7 @@ function [bounds, scaling] = getBounds(Qs, GRFs, num_q, num_muscles, num_act, gr
 
 import org.opensim.modeling.*
 
-time = Qs.allfilt(:, 1);
+time = Qs.time;
 T = size(time, 1);  % period
 
 y = struct('pos', {}, 'vel', {}, 'acc', {});
@@ -74,11 +74,12 @@ bounds.Qsdotdot.upper = (bounds.Qsdotdot.upper)./scaling.Qsdotdot;
 % Q = [q(:, 1), q_dot(:, 1), q(:, 2), q_dot(:, 2), ...]
 % Therefore, we need to make sure that the bounds follow the same pattern,
 % as they will be assigned to the X design variables!
-X_lower = reshape([Qs.lower, Qsdot.lower], 2, num_q);
-X_lower = reshape(permute(X_lower, [2, 1]), 1, dims);
+X_lower = cat(3, Qs.lower, Qsdot.lower);
+X_lower = reshape(permute(X_lower, [1, 3, 2]), 1, dims);
 
-X_upper = reshape([Qs.upper, Qsdot.upper], 2, num_q);
-X_upper = reshape(permute(X_upper, [2, 1]), 1, dims);
+X_upper = cat(3, Qs.upper, Qsdot.upper);
+X_upper = reshape(permute(X_upper, [1, 3, 2]), 1, dims);
+
 
 bounds.X.lower = X_lower;
 bounds.X.upper = X_upper;
@@ -127,6 +128,9 @@ tdeact = 0.06;
 bounds.vA.lower = (-1/100 * ones(1, num_muscles))./(ones(1, num_muscles) * tdeact);
 bounds.vA.upper = (1/100 * ones(1, num_muscles))./(ones(1, num_muscles) * tact);
 
+% fixed scaling factor
+scaling.vA = 100;
+
 % ---- MT forces ---- %
 bounds.FTtilde.lower = zeros(1, num_muscles);
 bounds.FTtilde.upper = 5 * ones(1, num_muscles);
@@ -140,16 +144,23 @@ bounds.FTtilde.upper = (bounds.FTtilde.upper)./scaling.FTtilde;
 bounds.dFTtilde.lower = -1*ones(1, num_muscles);
 bounds.dFTtilde.upper = 1*ones(1, num_muscles);
 
+% fixed scaling factor
+scaling.dFTtilde = 100;
 
 % -------------------------- Torque Actuators -------------------------- %
 % Torque actuator activations
 bounds.a_a.lower = -ones(1, num_act);
 bounds.a_a.upper = ones(1, num_act);
 
+% fixed scaling factor
+scaling.a_a = 1;
+
 % Torque actuator excitation
 bounds.e_a.lower = -ones(1, num_act);
 bounds.e_a.upper = ones(1, num_act);
 
+% fixed scaling factor
+scaling.e_a = 1;
 
 % ------------------------- Contact Model bounds ------------------------- %
 
