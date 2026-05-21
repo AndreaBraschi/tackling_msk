@@ -37,16 +37,19 @@ end
 end
 
 
-
 function vel = cubicSpline_vel(cs, x)
 % Analytical expressions:
 %   1st derivative: y_dot = 0*x^3 + 3*a1*x^2 + 2*a2*x + a3
 
+vel = zeros(size(x, 1), 1);
 a1 = cs.coefs(:, 1);
 a2 = cs.coefs(:, 2);
 a3 = cs.coefs(:, 3);
 
-vel = 3 * a1 * x.^2 + 2 * a2 * x + a3;
+vel(1:end-1) = a3;
+h = x(end) - x(end - 1);
+vel(end) = (3 * a1(end) * h^2) + 2 * (a2(end) * h) + a3(end);
+
 end
 
 
@@ -54,8 +57,12 @@ function acc = cubicSpline_acc(cs, x)
 % Analytical expressions:
 %   2nd derivative: y_dot_dot: 0*x^3 + 0*a1*x^2 + 6*a1*x + 2*a2
 
+acc = zeros(size(x, 1), 1);
+
 a1 = cs.coefs(:, 1);
 a2 = cs.coefs(:, 2);
 
-acc = 6 * a1 * x + 2 * a2;
+acc(1:end-1) = 2 * a2;
+h = x(end) - x(end - 1);
+acc(end) = (6 * a1(end) * h) + (2 * a2(end));
 end
