@@ -108,16 +108,16 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     
     % find which indices of Qs correspond to the DoFs that are spanned by
     % the neck muscles.
-    dof_indices = cellfun(@(name) find(strcmp(q_names, name)), dof_names, 'UniformOutput', false);
+    dof_indices = cellfun(@(name) find(strcmp(q_names, name)), dof_names);
 
     % now find the indices of all the other DoFs that aren't spanned by
     % muscles.
-    other_indices = setdiff(dof_indices_all, dof_indices');
+    other_indices = setdiff(dof_indices_all, dof_indices);
 
     % read names of dependent coordinates
     dependent_coord_names = config_struct.("dependent_coord_names");
     % find dependent coordinates indices
-    dependent_coord_idx = cellfun(@(name) find(strcmp(q_names, name)), dependent_coord_names, 'UniformOutput', false);
+    dependent_coord_idx = cellfun(@(name) find(strcmp(q_names, name)), dependent_coord_names);
     
     
     % differentiate between number of independent and dependent coords 
