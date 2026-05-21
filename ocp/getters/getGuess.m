@@ -1,4 +1,4 @@
-function guess = getGuess(Qs, nq, num_muscles, num_actuators, scaling)
+function guess = getGuess(Qs, time_mesh, time_col, num_q, num_muscles, num_actuators, scaling)
 % --------------------------------------------------------------------------
 % getGuess
 %   This function creates an inital guess for the design variables directly
@@ -27,38 +27,52 @@ function guess = getGuess(Qs, nq, num_muscles, num_actuators, scaling)
 %   the dimension of the state vector.
  
 
-T = size(Qs.allinterpfilt, 1);  % Period: discrete points along the trajectory
-dims = nq * 2;  % total dimensionality of the q-part of the state vector.
+T = size(Qs.allfilt, 1);  % Period: discrete points along the trajectory
+dims = num_q * 2;  % total dimensionality of the q-part of the state vector.
 
 % --------------------------------------------------------------------------
 % ------ Interpolate the generalised coordinates using cubic splines ------
 % Pre allocate arrays for
 % Position
-Qs_spline.data = zeros(size(Qs.allinterpfilt));
-Qs_spline.data(:,1) = Qs.allinterpfilt(1:end, 1);
+Qs_spline = zeros(size(Qs.allinterpfilt));
+Qs_spline_col = zeros(size(Qs.allinterpfilt_col));
 
 % Velocity
-Qdots_spline.data = zeros(size(Qs.allinterpfilt));
-Qdots_spline.data(:,1) = Qs.allinterpfilt(1:end,1);
+Qdots_spline = zeros(size(Qs.allinterpfilt));
+Qdots_spline_col = zeros(size(Qs.allinterpfilt_col));
 
 % Acceleration
-Qdotdots_spline.data = zeros(size(Qs.allinterpfilt));
-Qdotdots_spline.data(:,1) = Qs.allinterpfilt(1:end,1);
+Qdotdots_spline = zeros(size(Qs.allinterpfilt));
+Qdotdots_spline_col = zeros(size(Qs.allinterpfilt_col));
 
+mesh_k = discretize(time_mesh', Qs.time);
+mesh_dt = time_mesh' - Qs.time(mesh_k);
 
-for i = 2:size(Qs.allfilt,2)
+col_k = discretize(time_col, Qs.time);
+col_dt = time_col - Qs.time(col_k);
+
+for i = 1:num_q
     % calculate T - 1 (T being period) spline coefficients for Qs
-    Qs.datafiltspline(i) = spline(Qs.allfilt(:,1), Qs.allfilt(:,i));
+    cs = spline(Qs.time, Qs.allfilt(:, i + 1));  % i + 1, because i = 1 is time column
     
     % evaluate spline (and compute 1st and 2nd derivative) at the end points 
     % of each mesh segment
-    [Qs_spline.data(:,i), Qdots_spline.data(:,i), Qdotdots_spline.data(:,i)] = ...
-        eval_spline(Qs.datafiltspline(i), Qs.allinterpfilt(1:end,1),1);
+    y = eval_spline_col(cs, time_mesh, mesh_k, mesh_dt, 2);
+
+    Qs_spline(:, i) = y.pos;
+    Qdots_spline(:, i) = y.vel;
+    Qdotdots_spline(:, i) = y.acc;
+
+
     
     % evaluate spline (and compute 1st and 2nd derivative) at each 
     % collocation points
-    [Qs_spline_col.data(:,i), Qdots_spline_col.data(:,i), Qdotdots_spline_col.data(:,i)] = ...
-        SplineEval_ppuval(Qs.datafiltspline(i), Qs.allinterpfilt_col(1:end,1), 1);
+    y = eval_spline_col(cs, time_col, col_k, col_dt, 2);
+
+    Qs_spline_col(:, i) = y.pos;
+    Qdots_spline_col(:, i) = y.vel;
+    Qdotdots_spline_col(:, i) = y.acc;
+
 end
 
 
