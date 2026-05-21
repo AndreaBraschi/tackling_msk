@@ -114,6 +114,12 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     % muscles.
     other_indices = setdiff(dof_indices_all, dof_indices);
 
+    % we register the number of the DoFs that aren't spanned by the muscles
+    % as "number of actuators". This simply means that the force actuator
+    % for these coordinates is modelled as an idealised actuator, and it
+    % doesn't have all the inherent complexity of a muscle.
+    num_actuators = size(other_indices, 1);
+
     % read names of dependent coordinates
     dependent_coord_names = config_struct.("dependent_coord_names");
     % find dependent coordinates indices
@@ -156,10 +162,10 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
 
     % --- IK --- %
     % find Qs values at first/last point of each mesh
-    Qs.allinterpfilt = interp1(Qs.allfilt(:, 1), Qs.allfilt, time_intervals);
+    Qs.allinterpfilt = interp1(Qs.time, Qs.allfilt, time_intervals);
     
     % find Qs values at each collocation point along the trajectory
-    Qs.allinterpfilt_col = interp1(Qs.allfilt(:,1), Qs.allfilt, time_grid');
+    Qs.allinterpfilt_col = interp1(Qs.time, Qs.allfilt, time_grid');
 
 
     % --- GRF --- %
@@ -170,7 +176,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     time_expi.GRF(2) = find((GRF.time<(time_opt(2) + dt_GRF/2)) & (GRF.time>=(time_opt(2) - dt_GRF/2)));
 
     % ----------------------------- Bounds  ----------------------------- %
-    [bounds, scaling] = getBounds(Qs, GRFs, num_q, num_muscles, num_act, experimental_force_indices);
+    [bounds, scaling] = getBounds(Qs, GRFs, num_q, num_muscles, num_act, grf_indices, grm_indices);
 
     
     % -------------------------- Initial Guess  ------------------------- %
@@ -187,7 +193,6 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     Qdots_scaled_col = guess.Qs_col(:, 2:2:end);
     
     
-
     % ------------------------------------------------------------------- %
     %                          NLP formulation                            %
     % ------------------------------------------------------------------- %
