@@ -36,44 +36,28 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     num_threads = 8; % Number of threads used in parallel.
 
     
-    % --- add paths of subdirectories where we'll be picking functions from --- % 
-    pathmain = pwd;
-    [pathRepo, ~, ~] = fileparts(pathmain);
-    
-    pathSettings = [pathRepo,'/Settings'];
-    addpath(genpath(pathSettings));
-
+    % --- add paths of subdirectories where we'll be picking functions from --- %     
     % various utility functions
-    pathUtils = [pathRepo,'/utils'];
+    pathUtils = [pwd,'/utils'];
     addpath(genpath(pathUtils));
 
     % collocation scheme
-    pathCollocationScheme = [pathRepo,'/collocationScheme'];
+    pathCollocationScheme = [pwd,'/collocationScheme'];
     addpath(genpath(pathCollocationScheme));
 
-    pathMuscleModel = [pathRepo,'/muscle_model'];
+    pathMuscleModel = [pwd,'/muscle_model'];
     addpath(genpath(pathMuscleModel));   
 
-    pathCasADiFunctions = [pathRepo,'/casadi_functions'];
-    addpath(genpath(pathSettings));
+    pathCasADiFunctions = [pwd,'/casadi_functions'];
+    addpath(genpath(pathCasADiFunctions));
 
-
-    pathExternalFunctions = [pathRepo,'/externalFunctions/'];
-    if exist(pathExternalFunctions, 'dir')
-       cd(pathExternalFunctions);
-    else
-        warning('Cannot change directory: %s does not exist.', pathExternalFunctions);
-
-    end
-    
-    pathBounds = [pathRepo,'/bounds'];
+    pathBounds = [pwd,'/bounds'];
     addpath(genpath(pathBounds));
 
-    pathPolynomial = [pathRepo,'/Polynomials_GC'];
+    pathPolynomial = [pwd,'/polynomials'];
     addpath(genpath(pathPolynomial));
     
     
-  
     % Collocation scheme
     N = config_struct.("collocation").("number_of_segments");   % number of mesh intervals
     d = config_struct.("collocation").("num_points"); % number of collocation points per mesh interval
