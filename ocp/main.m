@@ -1,4 +1,4 @@
-function res = track_sim(model, trial_path, dll_filename)
+function res = track_sim(trial_id, trial_dir, dll_filepath)
 
 % --------------------------------------------------------------------------
 % track_sim
@@ -6,22 +6,23 @@ function res = track_sim(model, trial_path, dll_filename)
 %   Optimal Control Problem.
 
 % INPUTs:
-%   - model: scaled OpenSim model file of the form Model(file.osim).
-% 
-%   - trial_id (str): id of the trial that will be processed
+%    - trial_id (str): the ID of the specific trial under investigation
 
-%   - dll_filename (str): dll file that contains the external function used
-%     in the optimisation.
-% 
+%    - trial_dir (str): path to the specific trial directory
+
+%   - dll_filepath (str): path to the dll specific to the current trial 
+%     being tracked.
+
+
+% The function assumes the following structure in trial_dir:
+% /trial_dir
+%  |__.osim file  --> scaled OpenSim model
+%  |__/grf   --> where the GRF .mot files are contained
+%  |__/ik    --> where the IK .mot files are contained
+
 
 %
-% OUTPUT:
-%   - guess -
-%   * initial guess values for all optimisation variables
-% 
 % --------------------------------------------------------------------------
-
-
     import casadi.*
     import org.opensim.modeling.*
     
@@ -100,11 +101,10 @@ function res = track_sim(model, trial_path, dll_filename)
 
 
     % ------------------------ Experimental Data ------------------------ % 
-    % load IK
-    nametrial.GRF   = [nametrial.id, "grf"];
-    nametrial.IK    = [nametrial.id, "_IK"];
-
-    Qs = readMotQs(fullfile(trial_path, nametrial.IK));
+    
+    % ------ IK ------ %
+    ik_filepath = fullfile(trial_dir, "/ik/", trial_id + ".mot");
+    Qs = readMotQs(ik_filepath);
 
     dof_indices_all = 1:size(Qs.colheaders, 1);
 
@@ -128,8 +128,10 @@ function res = track_sim(model, trial_path, dll_filename)
     
     dt_ik = Qs.time(2) - Qs.time(1);
 
+    
     % load Ground Reaction Forces
-    GRFs = readMotGrf(fullfile(trial_path, nametrial.GRF));
+    grf_filepath = fullfile(trial_dir, "/grf/", trial_id + ".mot");
+    GRFs = readMotGrf(grf_filepath);
 
 
     % read initial and final time from IK 
@@ -634,8 +636,60 @@ function res = track_sim(model, trial_path, dll_filename)
 
         % Contraction dynamics (implicit formulation)
         eq_constr{end+1} = Hilldiffj;
+
         
+        % --------------------------------------------------------------- %
+        %                      Inequality constraints                     %
+        % --------------------------------------------------------------- %
+        % Activation dynamics (implicit formulation)   
+        tact = 0.015;
+        tdeact = 0.06;
+        act1 = vAk_nsc + akj(:, i + 1)./(ones(size(akj(:, i + 1),1),1) * tdeact);
+        act2 = vAk_nsc + ak./(ones(size(ak,1),1)*tact);
+        ineq_constr1{end+1} = act1;
+        ineq_constr2{end+1} = act2; 
+        
+
     end
+
+    eq_constr = vertcat(eq_constr{:});
+    ineq_constr1 = vertcat(ineq_constr1{:});
+    ineq_constr2 = vertcat(ineq_constr2{:});
+    ineq_constr3 = vertcat(ineq_constr3{:});
+
+    % Now we define a CasADi function that takes in the design variables at
+    % the collocation points and outputs the cost function (J) and the sets
+    % of constraints.
+    f_coll = Function('f_coll', {Xk, Xj, Aj, ak, aj, vAk, ...
+        FTtildek, FTtildej, dFTtildej, ...
+        a_ak, a_aj, e_ak, dFTtildej,...
+        Qs_scaled_k, Qs_scaled_j, ...
+        Qdots_scaled_k,Qdots_scaled_j,...
+        GRF_scaled_k, GRM_scaled_j, ...
+        GRM_scaled_k, GRM_scaled_j},...
+        {eq_constr, ineq_constr1, ineq_constr2, ineq_constr3, J});
+
+    % register function as parallel form across the number of segments of
+    % the trajectory.
+    f_coll_map = f_coll.map(N, parallelMode, num_threads);
+
+
+    % finally, we evaluate everything that was built symbolically
+    [eq_constr_num, ineq_constr1_num, ineq_constr2_num, ...
+        coll_ineq_constr3, J_num] = f_coll_map(X(:,1:end-1), X_col, A_col, ...
+        a(:, 1:end-1), a_col, vA,...
+        FTtilde(:, 1:end-1), FTtilde_col, dFTtilde_col, ...
+        a_a, a_a_col,e_a,...
+        ...
+        Qs_scaled(1:end-1,:)', ...
+        Qs_scaled_col',...
+        Qdots_scaled(1:end-1,:)',...
+        Qdots_scaled_col',...
+        GRF.val.allinterp_col(:, 2:end)',...
+        GRF.MorGF.allinterp_col(:, 2:end)');
+
+
+
 
 
 
