@@ -1,4 +1,4 @@
-function Qs = readMotQs(mot_filepath, filter)
+function Qs = readMotQs(filepath, cutoff)
 % -------------------------------------------------------------------------
 % readMotFile
 %   This function reads a .mot file.
@@ -11,9 +11,15 @@ function Qs = readMotQs(mot_filepath, filter)
 % OUTPUT:
 %   - Qs: filtered coordinates
 % -------------------------------------------------------------------------
-    Qs = importdata(mot_filepath);
+    arguments
+        filepath
+        cutoff = []   % default to empty if not passed
+    end    
+    
 
-    Qs.time = Qs.data(:,strcmp(Qs.colheaders, {'time'}));
+    Qs = importdata(filepath);
+
+    Qs.time = Qs.data(:, 1);
     translational_tags = {'tx', 'ty', 'tz'};
     
     % When dealing with .mot files (IK results), we have the joint
@@ -27,13 +33,12 @@ function Qs = readMotQs(mot_filepath, filter)
     Qs.data(:, ~mask) = Qs.data(:, ~mask) * (pi / 180);
 
     % Low-pass filter only if the user has passed a 'yes' as input
-    if strcmp(filter, 'yes')
+    if ~isempty(cutoff)
         order = 2;
-        cutoff_low = 15;
-        fs= 1 / mean(diff(Qs.data(:, 1)));
-        [af,bf] = butter(order/2, cutoff_low./(0.5*fs), 'low');
+        fs = 1 / mean(diff(Qs.data(:, 1)));
+        [a, b] = butter(order/2, cutoff./(0.5*fs), 'low');
         Qs.allfilt = Qs.data;
-        Qs.allfilt(:, 2:end) = filtfilt(af, bf, Qs.allfilt(:,2:end));
+        Qs.allfilt(:, 2:end) = filtfilt(a, b, Qs.allfilt(:, 2:end));
     
     else
         Qs.allfilt = Qs.data; % Store original data if no filtering is applied
