@@ -27,7 +27,8 @@ function guess = getGuess(Qs, time_mesh, time_col, num_q, num_muscles, num_actua
 %   the dimension of the state vector.
  
 
-T = size(Qs.allfilt, 1);  % Period: discrete points along the trajectory
+T_mesh = size(time_mesh, 2);
+T_col = size(time_col, 1);
 dims = num_q * 2;  % total dimensionality of the q-part of the state vector.
 
 % --------------------------------------------------------------------------
@@ -91,22 +92,22 @@ Qdotdots_spline_col = (Qdotdots_spline_col)./scaling.Qsdotdot;
 
 % We first need to place Qs and Qsdot as Simbody/OpenSim expect the state
 % vector to be: Q = [q_dot(:, 1), q_dot(:, 1), q(:, 2), q_dot(:, 2), ...]
-Q = reshape([Qs_spline, Qdots_spline], T, 2, dims);
-Q = reshape(permute(Q, [1, 3, 2]), T, dims * 2);
+Q = cat(3, Qs_spline, Qdots_spline);  % [T_mesh x num_q x 2]
+Q = reshape(permute(Q, [1, 3, 2]), T_mesh, dims);
 
-Q_col = reshape([Qs_spline_col, Qdots_spline_col], T, 2, dims);
-Q_col = reshape(permute(Q_col, [1, 3, 2]), T, dims * 2);
+Q_col = cat(3, Qs_spline_col, Qdots_spline_col);  % [T_col x num_q x 2]
+Q_col = reshape(permute(Q_col, [1, 3, 2]), T_col, dims);
 
 % add to a 'guess' struct: we can add the Q acceleration as they are, as
 % acceleration isn't part of the state vector.
 
 % end points of the mesh
 guess.Qs_all = Q;
-guess.Qdotdots_all = Qdotdots_spline.data;
+guess.Qdotdots_all = Qdotdots_spline;
 
 % collocation points
 guess.Qs_col = Q_col;
-guess.Qdotdots_col = Qdotdots_spline_col.data;
+guess.Qdotdots_col = Qdotdots_spline_col;
 
 
 % ----- Muscle variables ----- %
