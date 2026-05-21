@@ -54,6 +54,9 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     pathBounds = [pwd,'/bounds'];
     addpath(genpath(pathBounds));
 
+    pathGetters = [pwd,'/getters'];
+    addpath(genpath(pathGetters));
+
     pathPolynomial = [pwd,'/polynomials'];
     addpath(genpath(pathPolynomial));
     
@@ -67,30 +70,37 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     
     
     % Load external functions
-    % The external function performs inverse dynamics through the
-    % OpenSim/Simbody C++ API. This external function is compiled as a dll from
-    % which we create a Function instance using CasADi in MATLAB. 
-    % We use different external functions. A first external function extracts 
-    % several parameters of the bodies to which the contact spheres are attached.
-    % The contact forces are then computed in MATLAB and are inputs of the
-    % second external function in which the skeleton dynamics is described. The
-    % motivation for this decoupling is to limit the number of times we need to
-    % build the model. By defining the contact model in MATLAB, we only need to
-    % build the model once per external function, whereas keeping the contact
-    % model in the external function would require re-building the model during
-    % the optimization.
-    dll_path = [pathExternalFunctions, dll_filename]; 
-    F = external('F', dll_path); 
-    cd(pathmain);
+    F = external('F', dll_filepath); 
+
+    % -------------------------- OpenSim Model -------------------------- % 
+    model_filepath = fullfile(trial_dir, "/scaled_model.osim");
+    model = Model(model_filepath);
+
+     % ---------- sets ----------- %
+    coordinateSet = model.getCoordinateSet();
+    forceSet = model.getForceSet();
+    muscleSet = forceSet.getMuscles();
+    
+    
+    % ---------- info ----------- %
+    q_names = getItemNames(coordinateSet);
+    muscle_names = getItemNames(muscleSet);
+    MTparameters = getMTparameters(model, muscle_names);
+
+    % generic parameters
+    num_body_dof = 6;  % the number of theoretical DoFs that a rigid body has
+    num_q_all = coordinateSet.getSize();  % number of coordinates (independent and dependent)
+    num_muscles = muscleSet.getSize();  % number of muscles
+
 
 
     % ------------------------ Experimental Data ------------------------ % 
     
     % ------ IK ------ %
-    ik_filepath = fullfile(trial_dir, "/ik/", trial_id + ".mot");
-    Qs = readMotQs(ik_filepath);
+    ik_filepath = fullfile(trial_dir, "/ik/", trial_id + "_ik.mot");
+    Qs = readMotQs(ik_filepath, 20);
 
-    dof_indices_all = 1:size(Qs.colheaders, 1);
+    dof_indices_all = 1:num_q_all;
 
     % read from config structure the names of the DoFs that are spanned by
     % the muscles.
@@ -98,20 +108,22 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     
     % find which indices of Qs correspond to the DoFs that are spanned by
     % the neck muscles.
-    dof_indices = cellfun(@(name) find(strcmp(Qs.colheaders, name)), dof_names, 'UniformOutput', false);
+    dof_indices = cellfun(@(name) find(strcmp(q_names, name)), dof_names, 'UniformOutput', false);
 
     % now find the indices of all the other DoFs that aren't spanned by
     % muscles.
-    other_indices = setdiff(dof_indices_all, dof_indices);
+    other_indices = setdiff(dof_indices_all, dof_indices');
 
     % read names of dependent coordinates
     dependent_coord_names = config_struct.("dependent_coord_names");
     % find dependent coordinates indices
-    dependent_coord_idx = cellfun(@(name) find(strcmp(Qs.colheaders, name)), dependent_coord_names, 'UniformOutput', false);
+    dependent_coord_idx = cellfun(@(name) find(strcmp(q_names, name)), dependent_coord_names, 'UniformOutput', false);
     
     
-    dt_ik = Qs.time(2) - Qs.time(1);
-
+    % differentiate between number of independent and dependent coords 
+    num_q_dep = size(dependent_coord_names, 1);
+    num_q_ind = num_q_all - num_q_dep;
+    
     
     % load Ground Reaction Forces
     grf_filepath = fullfile(trial_dir, "/grf/", trial_id + ".mot");
@@ -120,26 +132,6 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
 
     % read initial and final time from IK 
     time_opt = [Qs.time(1, 1) Qs.time(end, 1)];
-
-
-    % --------------------- model parameters --------------------- % 
-    % Model sets
-    coordinateSet = model.getCoordinateSet();
-    forceSet = model.getForceSet();
-    muscleSet = forceSet.getMuscles();
-    q_names = getItemNames(coordinateSet);
-
-
-    % Muscle Tendon Unit parameters
-    muscleNames = getItemNames(muscleSet);
-    MTparameters = getMTparameters(model, muscleNames);
-
-    % generic parameters
-    num_body_dof = 6;  % the number of theoretical DoFs that a rigid body has
-    num_q_all = coordinateSet.getSize();  % number of coordinates (independent and dependent)
-    num_q_dep = size(dependent_coord_names, 1);
-    num_q_ind = num_q_all - num_q_dep;
-    num_muscles = muscleSet.getSize();  % number of muscles
 
 
     % -------------------------- Interpolation -------------------------- %
