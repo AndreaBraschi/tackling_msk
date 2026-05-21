@@ -1,4 +1,4 @@
-function [bounds, scaling] = getBounds(Qs, GRF, num_q, num_muscles, num_act)
+function [bounds, scaling] = getBounds(Qs, GRFs, num_q, num_muscles, num_act, grf_indices, grm_indices)
 
 % This function assign the bounds to: model coordinates (Qs), Ground
 % Reaction Forces (GRF), muscle activation, rate of change of muscle
@@ -12,6 +12,7 @@ function [bounds, scaling] = getBounds(Qs, GRF, num_q, num_muscles, num_act)
 %   - num_q (int):
 %   - num_muscles (int):
 %   - num_act (int):
+%   - grf_indices (int):
 
 import org.opensim.modeling.*
 
@@ -83,8 +84,8 @@ bounds.X.lower = X_lower;
 bounds.X.upper = X_upper;
 
 % ----------------------------- GRFs bounds ----------------------------- %
-lower_grf = min(GRF.val.all(:, 2:end));
-upper_grf = max(GRF.val.all(:, 2:end));
+lower_grf = min(GRFs.data(:, grf_indices));
+upper_grf = max(GRFs.data(:, grf_indices));
 
 % extend bounds to give some flexibility
 force_range = abs(upper_grf - lower_grf);
@@ -95,6 +96,21 @@ bounds.GRF.upper = upper_grf + force_range;
 scaling.GRF = max(abs(bounds.GRF.lower), abs(bounds.GRF.upper));
 bounds.GRF.lower = (bounds.GRF.lower)./scaling.GRF;
 bounds.GRF.upper = (bounds.GRF.upper)./scaling.GRF;
+
+
+% ----------------------------- GRMs bounds ----------------------------- %
+lower_grm = min(GRFs.data(:, grm_indices));
+upper_grm = max(GRFs.data(:, grm_indices));
+
+% extend bounds to give some flexibility
+moment_range = abs(upper_grm - lower_grm);
+bounds.GRM.lower = lower_grm - moment_range;
+bounds.GRM.upper = upper_grm + moment_range;
+
+% scale
+scaling.GRM = max(abs(bounds.GRM.lower), abs(bounds.GRM.upper));
+bounds.GRM.lower = (bounds.GRM.lower)./scaling.GRM;
+bounds.GRM.upper = (bounds.GRM.upper)./scaling.GRM;
 
 
 % ---------------------------- Muscle bounds ---------------------------- %
