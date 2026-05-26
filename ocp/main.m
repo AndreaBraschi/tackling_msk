@@ -307,19 +307,19 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     opti.set_initial(vA, guess.vA'); 
 
     % ----- Actuator Excitation ----- %
-    e_a = opti.variable(nq.arms, N);
+    e_a = opti.variable(num_actuators, N);
     opti.subject_to(bounds.e_a.lower'*ones(1, N) < e_a < bounds.e_a.upper'*ones(1,N));
     opti.set_initial(e_a, guess.e_a');
 
     % Define "slack" controls
     % Time derivative of muscle-tendon forces (states) at collocation points
-    dFTtilde_col = opti.variable(NMuscle, d * N);
+    dFTtilde_col = opti.variable(num_muscles, d * N);
     opti.subject_to(bounds.dFTtilde.lower'*ones(1,d*N) < dFTtilde_col < ...
             bounds.dFTtilde.upper'*ones(1, d * N));
     opti.set_initial(dFTtilde_col, guess.dFTtilde_col');
     
     % Time derivative of Qdots (states) at collocation points
-    A_col = opti.variable(nq.all, d * N);
+    A_col = opti.variable(num_q_ind, d * N);
     opti.subject_to(bounds.Qdotdots.lower'*ones(1, d * N) < A_col < ...
             bounds.Qdotdots.upper'*ones(1, d * N));
     opti.set_initial(A_col, guess.Qdotdots_col'); 
