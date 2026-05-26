@@ -10,8 +10,8 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
 
 %    - trial_dir (str): path to the specific trial directory
 
-%   - dll_filepath (str): path to the dll specific to the current trial 
-%     being tracked.
+%   - dll_filepath (char): path to the dll specific to the current trial 
+%     being tracked. char MUST be the data type expected by CasADi.
 
 
 % The function assumes the following structure in trial_dir:
@@ -57,7 +57,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     pathGetters = [pwd,'/getters'];
     addpath(genpath(pathGetters));
 
-    pathPolynomial = [pwd,'/polynomials'];
+    pathPolynomial = [pwd,'/muscle_polynomials'];
     addpath(genpath(pathPolynomial));
     
     
@@ -71,6 +71,10 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     
     % Load external functions
     F = external('F', dll_filepath); 
+    % load information relevant to external function from config file
+    dll_force_indices = config_struct.("dll_force_indices");
+    dll_grf_indices = [dll_force_indices.rGRF', dll_force_indices.lGRF'];
+    dll_grm_indices = [dll_force_indices.rGRM', dll_force_indices.lGRM'];
 
     % -------------------------- OpenSim Model -------------------------- % 
     model_filepath = fullfile(trial_dir, "/scaled_model.osim");
@@ -118,7 +122,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     % as "number of actuators". This simply means that the force actuator
     % for these coordinates is modelled as an idealised actuator, and it
     % doesn't have all the inherent complexity of a muscle.
-    num_actuators = size(other_indices, 1);
+    num_actuators = size(other_indices, 2);
 
     % read names of dependent coordinates
     dependent_coord_names = config_struct.("dependent_coord_names");
@@ -135,8 +139,8 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     grf_filepath = fullfile(trial_dir, "/grf/", trial_id + ".mot");
     GRFs = readMotGrf(grf_filepath, 20);
     experimental_force_indices = config_struct.("experimental_force_indices");
-    grf_indices = [experimental_force_indices.rGRF'; experimental_force_indices.lGRF'];
-    grm_indices = [experimental_force_indices.rGRM'; experimental_force_indices.lGRM'];
+    grf_indices = [experimental_force_indices.rGRF', experimental_force_indices.lGRF'];
+    grm_indices = [experimental_force_indices.rGRM', experimental_force_indices.lGRM'];
 
 
     % read initial and final time from IK 
@@ -162,37 +166,50 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
 
     % --- IK --- %
     % find Qs values at first/last point of each mesh
-    Qs.allinterpfilt = interp1(Qs.time, Qs.allfilt, time_intervals);
+    Qs.allinterpfilt = interp1(Qs.time, Qs.allfilt(:, 2:end), time_intervals);
     
     % find Qs values at each collocation point along the trajectory
-    Qs.allinterpfilt_col = interp1(Qs.time, Qs.allfilt, time_grid');
+    Qs.allinterpfilt_col = interp1(Qs.time, Qs.allfilt(:, 2:end), time_grid');
 
 
     % --- GRF --- %
     % find indices where the 2 items of time_opt are 
-    hz_GRF = 2000;  % make this more flexible, probably computing it from the grf.mot file as in the IK case is ideal
-    dt_GRF = 1 / hz_GRF;
-    time_expi.GRF(1) = find((GRF.time<(time_opt(1) + dt_GRF/2)) & (GRF.time>=(time_opt(1) - dt_GRF/2)));
-    time_expi.GRF(2) = find((GRF.time<(time_opt(2) + dt_GRF/2)) & (GRF.time>=(time_opt(2) - dt_GRF/2)));
+    dt_GRF = GRFs.time(2) - GRFs.time(1);
+    grf_init = find((GRFs.time<(time_opt(1) + dt_GRF/2)) & (GRFs.time>=(time_opt(1) - dt_GRF/2)));
+    grf_end = find((GRFs.time<(time_opt(2) + dt_GRF/2)) & (GRFs.time>=(time_opt(2) - dt_GRF/2)));
+
+    % crop force data
+    GRFs.time = GRFs.time(grf_init:grf_end);
+    GRFs.data = GRFs.data(grf_init:grf_end, :);
+
+    % find values at:
+    % mesh points
+    GRF_mesh = interp1(GRFs.time, GRFs.data(:, grf_indices), time_intervals);
+    GRM_mesh = interp1(GRFs.time, GRFs.data(:, grm_indices), time_intervals);
+
+    % collocation points
+    GRF_col = interp1(GRFs.time, GRFs.data(:, grf_indices), time_grid');
+    GRM_col = interp1(GRFs.time, GRFs.data(:, grm_indices), time_grid');
 
     % ----------------------------- Bounds  ----------------------------- %
-    [bounds, scaling] = getBounds(Qs, GRFs, num_q, num_muscles, num_act, grf_indices, grm_indices);
+    [bounds, scaling] = getBounds(Qs, GRFs, num_q_all, num_muscles, num_actuators, grf_indices, grm_indices);
 
     
     % -------------------------- Initial Guess  ------------------------- %
-    guess = getGuess(Qs, num_q, num_muscles, num_act, scaling);
+    guess = getGuess(Qs, time_intervals, time_grid, num_q_all, num_muscles, num_actuators, scaling);
     
     
     % ------------------- Experimental Data Scaling  ------------------- %
     % we have the scaled experimental data stored in the 'guess' struct.
-   
+    % q
     Qs_scaled = guess.Qs_all(:, 1:2:end);
-    Qs_scaled_col = guess.Qs_col(:, 2:2:end);
+    Qs_scaled_col = guess.Qs_col(:, 1:2:end);
     
-    Qdots_scaled = guess.Qs_all(:, 1:2:end);
+    % q dot
+    Qdots_scaled = guess.Qs_all(:, 2:2:end);
     Qdots_scaled_col = guess.Qs_col(:, 2:2:end);
-    
-    
+
+
     % ------------------------------------------------------------------- %
     %                          NLP formulation                            %
     % ------------------------------------------------------------------- %
@@ -229,9 +246,9 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     % ---------- Muscles ---------- %
     % Activation
     dims = num_muscles;
-    points = d * N;
     
     % 1) collocation points
+    points = d * N;
     a_col = opti.variable(dims, points);
     opti.subject_to(bounds.a.lower'< a_col < bounds.a.upper');
     opti.set_initial(a_col, guess.a_col');
@@ -244,9 +261,9 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
 
     % MT force
     dims = num_muscles;
-    points = d * N;
     
     % 1) collocation points
+    points = d * N;
     FTtilde_col = opti.variable(dims, points);
     opti.subject_to(bounds.FTtilde.lower'< FTtilde_col < bounds.FTtilde.upper');
     opti.set_initial(FTtilde_col, guess.FTtilde_col');
@@ -318,7 +335,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     % ---------- state-vector ---------- %
     % activation
     ak = MX.sym('ak', num_muscles);
-    aj = MX.sym('akmesh', num_muscles, d);
+    aj = MX.sym('aj', num_muscles, d);
     akj = [ak aj];
     
     % muscle-tendon unit force
@@ -332,7 +349,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     Xkj = [Xk Xj];  % shape: [num_q * 2, d + 1]
     
     a_ak = MX.sym('a_ak', num_act);
-    a_aj = MX.sym('a_akmesh', num_act, d);
+    a_aj = MX.sym('a_aj', num_act, d);
     a_akj = [a_ak a_aj];
     
     
@@ -355,23 +372,23 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
 
 
     % ------- Experimental Data to Track ------- %
-    Qs_scaled_k = MX.sym('Qs_scaled_k', size(Qs_scaled, 2));
-    Qs_scaled_j = MX.sym('Qs_scaled_j', size(Qs_scaled, 2), d);
-    Qs_scaled_kj = [Qs_scaled_k Qs_scaled_j];
+    Qs_track_k = MX.sym('Qs_track_k', size(Qs_scaled, 2));
+    Qs_track_j = MX.sym('Qs_track_j', size(Qs_scaled, 2), d);
+    Qs_track_kj = [Qs_track_k Qs_track_j];
     
-    Qdots_scaled_k = MX.sym('Qdots_scaled_k', size(Qs_scaled, 2));
-    Qdots_scaled_j = MX.sym('Qdots_scaled_j', size(Qs_scaled, 2), d);
-    Qdots_scaled_kj = [Qdots_scaled_k Qdots_scaled_j];
+    Qdots_track_k = MX.sym('Qdots_track_k', size(Qs_scaled, 2));
+    Qdots_track_j = MX.sym('Qdots_track_j', size(Qs_scaled, 2), d);
+    Qdots_track_kj = [Qdots_track_k Qdots_track_j];
     
     num_grfs = 6;
-    GRF_scaled_k = MX.sym('GRF_scaled_k', num_grfs); 
-    GRF_scaled_j = MX.sym('GRF_scaled_j', num_grfs, d); 
-    GRF_scaled_kj = [GRF_scaled_k GRF_scaled_j];
+    GRF_track_k = MX.sym('GRF_track_k', num_grfs); 
+    GRF_track_j = MX.sym('GRF_track_j', num_grfs, d); 
+    GRF_track_kj = [GRF_track_k GRF_track_j];
 
     num_grm = 6;
-    GRM_scaled_k = MX.sym('GRM_scaled_k', num_grm); 
-    GRM_scaled_j = MX.sym('GRM_scaled_j', num_grm, d); 
-    GRM_scaled_kj = [GRM_scaled_k GRM_scaled_j];
+    GRM_track_k = MX.sym('GRM_track_k', num_grm); 
+    GRM_track_j = MX.sym('GRM_track_j', num_grm, d); 
+    GRM_track_kj = [GRM_track_k GRM_track_j];
 
 
     % initialise set of constraint vector
@@ -395,8 +412,10 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     % ------------------------------------------------------------------- %
 
     % we need to make use of the unscaled version of the data
-    Xkj_nsc = Xkj.*(scaling.QsQdots');  % shape: [num_q * 2, d + 1]
-     
+    Xkj_nsc = MX.zeros(size(Xkj));
+    Xkj_nsc(1:2:end, :) = Xkj(1:2:end,:).*scaling.Qs';
+    Xkj_nsc(2:2:end, :) = Xkj(2:2:end,:).*scaling.Qsdot';
+   
     FTtildekj_nsc = FTtildekj.*(scaling.FTtilde');
     
     dFTtildej_nsc = dFTtildej.*scaling.dFTtilde;
@@ -414,13 +433,13 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
 
     % --- sum of squares --- %
     % q
-    J_q = sum_of_squares('q', num_q);
+    J_q = sum_of_squares('q', num_q_all);
     
     % q_dot
-    J_q_dot = sum_of_squares('q_dot', num_q);
+    J_q_dot = sum_of_squares('q_dot', num_q_all);
 
     % q_dot_dot
-    J_q_dot_dot = sum_of_squares('q_dot_dot', num_q);
+    J_q_dot_dot = sum_of_squares('q_dot_dot', num_q_all);
 
     % muscle activation
     J_muscles_act = sum_of_squares('muscle_act', num_muscles);
@@ -444,7 +463,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     % --- joint moments --- %
     
     % active elements
-    muscle_spanning_joint_file = [polyResultsPath "/muscle_spanning_joint_INFO_subject_GC.mat"];
+    muscle_spanning_joint_file = [polyResultsPath "/muscle_spanning_joints_info.mat"];
     muscle_spanning_joint_info = load(muscle_spanning_joint_file);
     
     % loop through the DoFs spanned by the model muscles 
@@ -485,12 +504,12 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         % evaluate external function
         Ti = F([Xkj_nsc_all, Aj_all]);
 
-        % --- compute: lMT (muscle-tendon length), d_lMT/dt, MA(moment arm)
-        
-        % isolate DoFs that are spanned by muscles
         Q_kj_nsc = Xkj_nsc(1:2:end, i + 1); % +1 because first point is the mesh beginning
         Qdot_kj_nsc = Xkj_nsc(2:2:end, i + 1);
         
+        % --- compute: lMT (muscle-tendon length), d_lMT/dt, MA(moment arm)
+        
+        % isolate DoFs that are spanned by muscles        
         dof_i = Q_kj_nsc(dof_indices);  
         dof_dot_i = Qdot_kj_nsc(dof_indices);
 
@@ -515,26 +534,22 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         
         a_a_dot  = a_akj * C(:, i+1); % [num_actuators, d + 1] @ [d+1, d] -> [num_actuators, d]
         
-        % ---------------- Cost Function ---------------- %
-        % difference between optimised and observed Qs
-        q_diff = Q_kj_nsc - Qs_scaled_kj(:, i + 1);
-        q_dot_diff = Qdots_nsc_dot - Qdot_kj_nsc(:, i + 1);
-        
-
-        % ---------------- Terms ---------------- %
+        % ---------------- Cost Function Terms ---------------- %
         % Q
+        q_diff = Q_kj_nsc - Qs_track_kj(:, i + 1);
         q_term = W.q * B(i + 1) * J_q(q_diff) * mesh_T;
 
         % Q dot
+        q_dot_diff = Qdots_nsc_dot - Qdot_kj_nsc(:, i + 1);
         q_dot_term = W.q_dot * B(i + 1) * J_q_dot(q_dot_diff) * mesh_T;
 
         % GRF
-        Ti_GRF_scaled = Tj(num_q + 1, 1)./scaling.GRF';
-        GRF_term = W.GRF * B(i + 1) * (J_GRF(Ti_GRF_scaled - GRF_scaled_kj(:, i))) * mesh_T;
+        Ti_GRF_scaled = Tj(num_q_all + dll_grf_indices, 1)./scaling.GRF';
+        GRF_term = W.GRF * B(i + 1) * (J_GRF(Ti_GRF_scaled - GRF_track_kj(:, i))) * mesh_T;
 
         % GRM
-        Ti_GRM_scaled = Tj(GRFi.all, 1)./scaling.GRM';
-        GRM_term = W.GRM * B(i + 1) * (J_GRM(Ti_GRM_scaled - GRM_scaled_kj(:, i))) * mesh_T;
+        Ti_GRM_scaled = Tj(num_q_all + dll_grm_indices, 1)./scaling.GRM';
+        GRM_term = W.GRM * B(i + 1) * (J_GRM(Ti_GRM_scaled - GRM_track_kj(:, i))) * mesh_T;
 
         % muscle activation
         act_term = W.a * B(i + 1) * (J_muscles_act(akj(:, i + 1))) * mesh_T;
@@ -649,8 +664,8 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         FTtildek, FTtildej, dFTtildej, ...
         a_ak, a_aj, e_ak, dFTtildej,...
         Qs_scaled_k, Qs_scaled_j, ...
-        Qdots_scaled_k,Qdots_scaled_j,...
-        GRF_scaled_k, GRM_scaled_j, ...
+        Qdots_scaled_k, Qdots_scaled_j,...
+        GRF_scaled_k, GRF_scaled_j, ...
         GRM_scaled_k, GRM_scaled_j},...
         {eq_constr, ineq_constr1, ineq_constr2, ineq_constr3, J});
 
@@ -660,8 +675,8 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
 
 
     % finally, we evaluate everything that was built symbolically
-    [eq_constr_num, ineq_constr1_num, ineq_constr2_num, ...
-        coll_ineq_constr3, J_num] = f_coll_map(X(:,1:end-1), X_col, A_col, ...
+    [eq_constr_all, ineq_constr1_all, ineq_constr2_all, ...
+        ineq_constr3_all, J_all] = f_coll_map(X(:, 1:end-1), X_col, A_col, ...
         a(:, 1:end-1), a_col, vA,...
         FTtilde(:, 1:end-1), FTtilde_col, dFTtilde_col, ...
         a_a, a_a_col,e_a,...
@@ -670,7 +685,60 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         Qs_scaled_col',...
         Qdots_scaled(1:end-1,:)',...
         Qdots_scaled_col',...
-        GRF.val.allinterp_col(:, 2:end)',...
-        GRF.MorGF.allinterp_col(:, 2:end)');
+        GRF_col',...
+        GRM_col');
+
+
+    % --------------------------------------------------------------- %
+    %                       mesh end points                           %
+    % --------------------------------------------------------------- %
+    % Loop over segments
+    Q_k = Xk(1:2:end, :);
+    Q_j = Xj(1:2:end, :);
+    
+    Qdot_k = Xk(2:2:end, :);
+    Qdot_j = Xj(2:2:end, :);
+    
+    col_indices = [1, 2, 3];
+    for k=1:N
+        x_init = col_indices(1);
+        x_end = col_indices(end) + 3;
+
+        q_kj = [Q_k(:, k), Q_j(:, col_indices)];
+        qdot_kj = [Qdot_k(:, k), Qdot_j(:, x_init:x_end)];
+        
+        akj = [a(:, k), a_col(:, col_indices)];
+        FTtildekj = [FTtilde(:, k), FTtilde_col(:, col_indices)];
+        a_akj = [a_a(:,k), a_a_col(:, col_indices)];
+        
+        % Add equality constraints (next interval starts with end values of 
+        % states from previous interval)
+        opti.subject_to(Q_k(:, k + 1) == q_kj * D);
+        opti.subject_to(Qdot_k(:, k + 1) == qdot_kj * D);
+        opti.subject_to(a(:, k + 1) == akj * D);
+        opti.subject_to(FTtilde(:, k + 1) == FTtildekj * D);
+        opti.subject_to(a_a(:, k + 1) == a_akj * D);
+
+        % update collocation indices
+        col_indices = col_indices + 3;
+    end
+    
+    
+    % --------------------------------------------------------------- %
+    %                          NLP solver                             %
+    % --------------------------------------------------------------- %           
+    opti.minimize(J_all);
+    options.ipopt.hessian_approximation = 'limited-memory';
+    options.ipopt.mu_strategy  = 'adaptive';
+    options.ipopt.max_iter = 10000;
+    options.ipopt.tol = 1*10^(-tol_ipopt);
+    options.ipopt.print_timing_statistics='yes';
+    opti.solver('ipopt', options);  
+    
+    
+    % --------------------------------------------------------------- %
+    %                          Solve problem                          %
+    % --------------------------------------------------------------- %   
+    [w_opt,stats,g_opt] = solve_NLPSOL(opti,options);  
 
 end
