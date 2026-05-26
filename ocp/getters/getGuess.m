@@ -1,4 +1,4 @@
-function guess = getGuess(Qs, time_mesh, time_col, num_q, num_muscles, num_actuators, scaling)
+function guess = getGuess(Qs, independent_coord_idx, time_mesh, time_col, num_q, num_muscles, num_actuators, scaling)
 % --------------------------------------------------------------------------
 % getGuess
 %   This function creates an inital guess for the design variables directly
@@ -12,6 +12,8 @@ function guess = getGuess(Qs, time_mesh, time_col, num_q, num_muscles, num_actua
 
 % INPUTs:
 %   - Qs (struct): coordinates coming from IK.
+
+%   - independent_coord_idx (double): array containing indices of Qs that correspond to the model independent coordinates.
 % 
 %   - nq (int): number of coordinates
 %
@@ -108,6 +110,27 @@ guess.Qdotdots_all = Qdotdots_spline;
 % collocation points
 guess.Qs_col = Q_col;
 guess.Qdotdots_col = Qdotdots_spline_col;
+
+
+
+% Do the same for the independent coordinates only.
+% We first need to place Qs and Qsdot as Simbody/OpenSim expect the state
+% vector to be: Q = [q_dot(:, 1), q_dot(:, 1), q(:, 2), q_dot(:, 2), ...]
+dims_ind = size(independent_coord_idx, 2) * 2;
+Q_ind = cat(3, Qs_spline(:, independent_coord_idx), Qdots_spline(:, independent_coord_idx));  % [T_mesh x num_q x 2]
+Q_ind = reshape(permute(Q_ind, [1, 3, 2]), T_mesh, dims_ind);
+
+Q_col_ind = cat(3, Qs_spline_col(:, independent_coord_idx), Qdots_spline_col(:, independent_coord_idx));  % [T_col x num_q x 2]
+Q_col_ind = reshape(permute(Q_col_ind, [1, 3, 2]), T_col, dims_ind);
+
+% add to a 'guess' struct: we can add the Q acceleration as they are, as
+% acceleration isn't part of the state vector.
+
+% end points of the mesh
+guess.Qs_all = Q_ind;
+
+% collocation points
+guess.Qs_col_ind = Q_col_ind;
 
 
 % ----- Muscle variables ----- %

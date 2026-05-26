@@ -128,6 +128,9 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     dependent_coord_names = config_struct.("dependent_coord_names");
     % find dependent coordinates indices
     dependent_coord_idx = cellfun(@(name) find(strcmp(q_names, name)), dependent_coord_names);
+
+    % independent coordinates indices
+    independent_coord_idx = setdiff(dof_indices_all, dependent_coord_idx);
     
     
     % differentiate between number of independent and dependent coords 
@@ -192,11 +195,11 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     GRM_col = interp1(GRFs.time, GRFs.data(:, grm_indices), time_grid');
 
     % ----------------------------- Bounds  ----------------------------- %
-    [bounds, scaling] = getBounds(Qs, GRFs, num_q_all, num_muscles, num_actuators, grf_indices, grm_indices);
+    [bounds, scaling] = getBounds(Qs, independent_coord_idx, GRFs, num_q_all, num_muscles, num_actuators, grf_indices, grm_indices);
 
     
     % -------------------------- Initial Guess  ------------------------- %
-    guess = getGuess(Qs, time_intervals, time_grid, num_q_all, num_muscles, num_actuators, scaling);
+    guess = getGuess(Qs, independent_coord_idx, time_intervals, time_grid, num_q_all, num_muscles, num_actuators, scaling);
     
     
     % ------------------- Experimental Data Scaling  ------------------- %
@@ -235,13 +238,13 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     % bounds
     opti.subject_to(bounds.X.lower' < X_col < bounds.X.upper');
     % initial condition
-    opti.set_initial(X_col, guess.Qs_col');
+    opti.set_initial(X_col, guess.Qs_col_ind');
     
     % 2) mesh end-points
     points = N + 1;  
     X = opti.variable(dims, points);
     opti.subject_to(bounds.X.lower' < X < bounds.X.upper');
-    opti.set_initial(X, guess.Qs_all');
+    opti.set_initial(X, guess.Qs_all_ind');
 
     % ---------- Muscles ---------- %
     % Activation
@@ -344,8 +347,8 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     FTtildekj = [FTtildek FTtildej];
     
     % q and q_dot
-    Xk = MX.sym('Xk', 2 * num_q);   % shape: [num_q * 2]
-    Xj = MX.sym('Xj', 2 * num_q, d); % shape: [num_q * 2, d]
+    Xk = MX.sym('Xk', 2 * num_q_ind);   % shape: [num_q * 2]
+    Xj = MX.sym('Xj', 2 * num_q_ind, d); % shape: [num_q * 2, d]
     Xkj = [Xk Xj];  % shape: [num_q * 2, d + 1]
     
     a_ak = MX.sym('a_ak', num_act);
@@ -365,7 +368,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     
     % q_dotdot: remember, we're using implicit formulation. Therefore,
     % accelerations are treated as "controls".
-    Aj = MX.sym('Aj', num_q, d); 
+    Aj = MX.sym('Aj', num_q_ind, d); 
 
     % ----------Pelvis residuals ---------- %
     pelvis_res_j = MX.sym('pelvis_res_j', num_body_dof, d);
@@ -504,8 +507,8 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         % evaluate external function
         Ti = F([Xkj_nsc_all, Aj_all]);
 
-        Q_kj_nsc = Xkj_nsc(1:2:end, i + 1); % +1 because first point is the mesh beginning
-        Qdot_kj_nsc = Xkj_nsc(2:2:end, i + 1);
+        Q_kj_nsc = Xkj_nsc_all(1:2:end, i + 1); % +1 because first point is the mesh beginning
+        Qdot_kj_nsc = Xkj_nsc_all(2:2:end, i + 1);
         
         % --- compute: lMT (muscle-tendon length), d_lMT/dt, MA(moment arm)
         
@@ -525,8 +528,8 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         % derivative approximation at the collocation points of the
         % segment.
         % --------------------------------------------------------------- %
-        Q_nsc_dot  = Xkj_nsc(1:2:end,:) * C(:, i+1);  % [num_q, d + 1] @ [d+1, d] -> [num_q, d]
-        Qdots_nsc_dot  = Xkj_nsc(2:2:end,:) * C(:, i+1);  % [num_q, d + 1] @ [d+1, d] -> [num_q, d]          
+        Q_nsc_dot  = Xkj_nsc_all(1:2:end,:) * C(:, i+1);  % [num_q, d + 1] @ [d+1, d] -> [num_q, d]
+        Qdots_nsc_dot  = Xkj_nsc_all(2:2:end,:) * C(:, i+1);  % [num_q, d + 1] @ [d+1, d] -> [num_q, d]          
         
         FTtilde_nsc_dot  = FTtildekj_nsc * C(:, i+1);% [num_q, d + 1] @ [d+1, d] -> [num_q, d]
    
@@ -558,7 +561,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         act_der_term = W.vA * B(i + 1) * (J_muscles_act_der(vAk) * mesh_T);
 
         % Q dot dot: Accelerations
-        q_dot_dot_term = W.acc * B(i + 1) * (J_q_dot_dot(Aj(:, i)) * mesh_T);
+        q_dot_dot_term = W.acc * B(i + 1) * (J_q_dot_dot(Aj_all(:, i)) * mesh_T);
 
         % derivative of MT force
         dMTf_dt_term = B(i + 1) * (J_MT_unit(dFTtildej(:, i)) * mesh_T);

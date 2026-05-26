@@ -1,4 +1,4 @@
-function [bounds, scaling] = getBounds(Qs, GRFs, num_q, num_muscles, num_act, grf_indices, grm_indices)
+function [bounds, scaling] = getBounds(Qs, independent_coord_idx, GRFs, num_q, num_muscles, num_act, grf_indices, grm_indices)
 
 % This function assign the bounds to: model coordinates (Qs), Ground
 % Reaction Forces (GRF), muscle activation, rate of change of muscle
@@ -8,8 +8,8 @@ function [bounds, scaling] = getBounds(Qs, GRFs, num_q, num_muscles, num_act, gr
 %
 % Inputs:
 %   - Qs (struct): 
+%   - independent_coord_idx (double): 
 %   - GRF (struct):
-%   - num_q (int):
 %   - num_muscles (int):
 %   - num_act (int):
 %   - grf_indices (int):
@@ -46,6 +46,10 @@ scaling.Qs = max(abs(Qs.lower), abs(Qs.upper));
 Qs.lower = (Qs.lower)./scaling.Qs;
 Qs.upper = (Qs.upper)./scaling.Qs;
 
+scaling.Qs_ind = max(abs(Qs.lower(:, independent_coord_idx)), abs(Qs.upper(:, independent_coord_idx)));
+Qs.lower_ind = (Qs.lower(:, independent_coord_idx))./scaling.Qs_ind;
+Qs.upper_ind = (Qs.upper(:, independent_coord_idx))./scaling.Qs_ind;
+
 
 % --- velocities --- %
 for i = 1:num_q
@@ -56,6 +60,11 @@ end
 scaling.Qsdot = max(abs(Qsdot.lower), abs(Qsdot.upper));
 Qsdot.lower = (Qsdot.lower)./scaling.Qsdot;
 Qsdot.upper = (Qsdot.upper)./scaling.Qsdot;
+
+scaling.Qsdot_ind = max(abs(Qsdot.lower(:, independent_coord_idx)), abs(Qsdot.upper(:, independent_coord_idx)));
+Qsdot.lower_ind = (Qsdot.lower(:, independent_coord_idx))./scaling.Qsdot_ind;
+Qsdot.upper_ind = (Qsdot.upper(:, independent_coord_idx))./scaling.Qsdot_ind;
+
 
 % --- accelerations --- %
 for i = 1:num_q
@@ -74,11 +83,12 @@ bounds.Qsdotdot.upper = (bounds.Qsdotdot.upper)./scaling.Qsdotdot;
 % Q = [q(:, 1), q_dot(:, 1), q(:, 2), q_dot(:, 2), ...]
 % Therefore, we need to make sure that the bounds follow the same pattern,
 % as they will be assigned to the X design variables!
-X_lower = cat(3, Qs.lower, Qsdot.lower);
-X_lower = reshape(permute(X_lower, [1, 3, 2]), 1, dims);
+dims_ind = size(independent_coord_idx, 2) * 2;
+X_lower = cat(3, Qs.lower_ind, Qs.lower_ind);
+X_lower = reshape(permute(X_lower, [1, 3, 2]), 1, dims_ind);
 
-X_upper = cat(3, Qs.upper, Qsdot.upper);
-X_upper = reshape(permute(X_upper, [1, 3, 2]), 1, dims);
+X_upper = cat(3, Qs.upper_ind, Qsdot.upper_ind);
+X_upper = reshape(permute(X_upper, [1, 3, 2]), 1, dims_ind);
 
 
 bounds.X.lower = X_lower;
