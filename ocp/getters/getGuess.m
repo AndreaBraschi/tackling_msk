@@ -55,6 +55,7 @@ col_k = discretize(time_col, Qs.time);
 col_dt = time_col - Qs.time(col_k);
 
 for i = 1:num_q
+    
     % calculate T - 1 (T being period) spline coefficients for Qs
     cs = spline(Qs.time, Qs.allfilt(:, i + 1));  % i + 1, because i = 1 is time column
     
@@ -63,8 +64,14 @@ for i = 1:num_q
     y = eval_spline_col(cs, time_mesh, mesh_k, mesh_dt, 2);
 
     Qs_spline(:, i) = y.pos;
+    validate_array(y.pos, "Q_spline")
+
     Qdots_spline(:, i) = y.vel;
+    validate_array(y.vel, "Qdots_spline")
+    
+    
     Qdotdots_spline(:, i) = y.acc;
+    validate_array(y.acc, "Qdotdots_spline")
 
 
     
@@ -73,9 +80,14 @@ for i = 1:num_q
     y = eval_spline_col(cs, time_col, col_k, col_dt, 2);
 
     Qs_spline_col(:, i) = y.pos;
-    Qdots_spline_col(:, i) = y.vel;
-    Qdotdots_spline_col(:, i) = y.acc;
+    validate_array(y.pos, "Qs_spline_col")
 
+    
+    Qdots_spline_col(:, i) = y.vel;
+    validate_array(y.vel, "Qdots_spline_col")
+    
+    Qdotdots_spline_col(:, i) = y.acc;
+    validate_array(y.acc, "Qdotdots_spline_col")
 end
 
 
@@ -127,7 +139,7 @@ Q_col_ind = reshape(permute(Q_col_ind, [1, 3, 2]), T_col, dims_ind);
 % acceleration isn't part of the state vector.
 
 % end points of the mesh
-guess.Qs_all = Q_ind;
+guess.Qs_all_ind = Q_ind;
 
 % collocation points
 guess.Qs_col_ind = Q_col_ind;
@@ -162,6 +174,47 @@ guess.a_a = 0.1 * ones(T_mesh, num_actuators);
 guess.e_a = 0.1 * ones(T_col, num_actuators);
 guess.a_a_col= 0.01 * ones(T_mesh, num_muscles);
 
+% look for invalid numerical values
+validate_guess(guess);
 
 
+end
+
+
+function validate_array(val, name)
+    nan_idx = find(isnan(val(:)));
+    inf_idx = find(isinf(val(:)));
+    
+    if ~isempty(nan_idx)
+        error('[Array Validation] "%s" contains NaN at indices: %s', ...
+            name, mat2str(nan_idx'));
+    end
+    
+    if ~isempty(inf_idx)
+        error('[Array Validation] "%s" contains Inf at indices: %s', ...
+            name, mat2str(inf_idx'));
+    end
+end
+
+
+function validate_guess(guess)
+    fields = fieldnames(guess);
+    for i = 1:numel(fields)
+        field = fields{i};
+        val = guess.(field);
+        
+        nan_idx = find(isnan(val(:)));
+        inf_idx = find(isinf(val(:)));
+        
+        if ~isempty(nan_idx)
+            error('[Initial Guess Validation] "%s" contains NaN at indices: %s', ...
+                field, mat2str(nan_idx'));
+        end
+        
+        if ~isempty(inf_idx)
+            error('[Initial Guess Validation] "%s" contains Inf at indices: %s', ...
+                field, mat2str(inf_idx'));
+        end
+    end
+    fprintf('[Initial Guess Validation] All fields passed.\n');
 end

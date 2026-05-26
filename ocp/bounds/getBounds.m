@@ -27,8 +27,14 @@ dims = num_q * 2;
 % loop through the columns of Qs, starting from index 2 (1 is time), and
 % calculate the spline coefficients, given the experimental data
 for i = 1:num_q
+    
     cs = spline(time, Qs.allfilt(:, i + 1));
     y(i) = eval_spline(cs, time, 2);
+
+    %validate_array(y(i).pos, "Q_spline")
+    %validate_array(y(i).vel, "Qdots_spline")
+    %validate_array(y(i).acc, "Qdotdots_spline")
+
 end
 
 % ----------------------------- Qs bounds ----------------------------- %
@@ -38,41 +44,59 @@ end
 
 % --- positions --- %
 for i = 1:num_q
-    Qs.upper(i) = max(y(i).pos);
-    Qs.lower(i) = min(y(i).pos);
+    if max(y(i).pos) == 0 || min(y(i).pos) == 0
+        Qs.upper(i) = 1;
+        Qs.lower(i) = 1;
+
+    else
+        Qs.upper(i) = max(y(i).pos); 
+        Qs.lower(i) = min(y(i).pos);
+    end
 end
 % scale
 scaling.Qs = max(abs(Qs.lower), abs(Qs.upper));
 Qs.lower = (Qs.lower)./scaling.Qs;
 Qs.upper = (Qs.upper)./scaling.Qs;
 
-scaling.Qs_ind = max(abs(Qs.lower(:, independent_coord_idx)), abs(Qs.upper(:, independent_coord_idx)));
-Qs.lower_ind = (Qs.lower(:, independent_coord_idx))./scaling.Qs_ind;
-Qs.upper_ind = (Qs.upper(:, independent_coord_idx))./scaling.Qs_ind;
+Qs.lower_ind = Qs.lower(:, independent_coord_idx);
+Qs.upper_ind = Qs.upper(:, independent_coord_idx);
 
 
 % --- velocities --- %
-for i = 1:num_q
-    Qsdot.upper(i) = max(y(i).vel); 
-    Qsdot.lower(i) = min(y(i).vel);
+for i = 1:num_q    
+    if max(y(i).vel) == 0 || min(y(i).vel) == 0
+        Qsdot.upper(i) = 1;
+        Qsdot.lower(i) = 1;
+
+    else
+        Qsdot.upper(i) = max(y(i).vel); 
+        Qsdot.lower(i) = min(y(i).vel);
+    end
 end
+
 % scale
 scaling.Qsdot = max(abs(Qsdot.lower), abs(Qsdot.upper));
 Qsdot.lower = (Qsdot.lower)./scaling.Qsdot;
 Qsdot.upper = (Qsdot.upper)./scaling.Qsdot;
 
-scaling.Qsdot_ind = max(abs(Qsdot.lower(:, independent_coord_idx)), abs(Qsdot.upper(:, independent_coord_idx)));
-Qsdot.lower_ind = (Qsdot.lower(:, independent_coord_idx))./scaling.Qsdot_ind;
-Qsdot.upper_ind = (Qsdot.upper(:, independent_coord_idx))./scaling.Qsdot_ind;
+Qsdot.lower_ind = Qsdot.lower(:, independent_coord_idx');
+Qsdot.upper_ind = Qsdot.upper(:, independent_coord_idx');
 
 
 % --- accelerations --- %
 for i = 1:num_q
-    bounds.Qsdotdot.upper(i) = max(y(i).acc);
-    bounds.Qsdotdot.lower(i) = min(y(i).acc);
+    if max(y(i).acc) == 0 || min(y(i).acc) == 0
+        bounds.Qsdotdot.upper(i) = 1;
+        bounds.Qsdotdot.lower(i) = 1;
+
+    else
+        bounds.Qsdotdot.upper(i) = max(y(i).acc);
+        bounds.Qsdotdot.lower(i) = min(y(i).acc);
+    end
 end
+
 % scale
-scaling.Qsdotdot = max(abs(bounds.Qsdotdot.lower),abs(bounds.Qsdotdot.upper));
+scaling.Qsdotdot = max(abs(bounds.Qsdotdot.lower), abs(bounds.Qsdotdot.upper));
 bounds.Qsdotdot.lower = (bounds.Qsdotdot.lower)./scaling.Qsdotdot;
 bounds.Qsdotdot.upper = (bounds.Qsdotdot.upper)./scaling.Qsdotdot;
 
@@ -84,7 +108,7 @@ bounds.Qsdotdot.upper = (bounds.Qsdotdot.upper)./scaling.Qsdotdot;
 % Therefore, we need to make sure that the bounds follow the same pattern,
 % as they will be assigned to the X design variables!
 dims_ind = size(independent_coord_idx, 2) * 2;
-X_lower = cat(3, Qs.lower_ind, Qs.lower_ind);
+X_lower = cat(3, Qs.lower_ind, Qsdot.lower_ind);
 X_lower = reshape(permute(X_lower, [1, 3, 2]), 1, dims_ind);
 
 X_upper = cat(3, Qs.upper_ind, Qsdot.upper_ind);
@@ -172,6 +196,9 @@ bounds.e_a.upper = ones(1, num_act);
 % fixed scaling factor
 scaling.e_a = 1;
 
+% look for invalid numerical values
+validate_bounds(bounds);
+
 % ------------------------- Contact Model bounds ------------------------- %
 
 % ----> why there was no bounds for stiffness and damping? 
@@ -179,4 +206,48 @@ scaling.e_a = 1;
 % ----> what should I do? give full flexibility of constraining to some
 % mechanically meaningful values?
 
+end
+
+
+function validate_array(val, name)
+    nan_idx = find(isnan(val(:)));
+    inf_idx = find(isinf(val(:)));
+    
+    if ~isempty(nan_idx)
+        error('[Array Validation] "%s" contains NaN at indices: %s', ...
+            name, mat2str(nan_idx'));
+    end
+    
+    if ~isempty(inf_idx)
+        error('[Array Validation] "%s" contains Inf at indices: %s', ...
+            name, mat2str(inf_idx'));
+    end
+end
+
+
+function validate_bounds(bounds)
+    fields = fieldnames(bounds);
+    for i = 1:numel(fields)
+        field = fields{i};
+        
+        subfields = {'lower', 'upper'};
+        for j = 1:numel(subfields)
+            subfield = subfields{j};
+            val = bounds.(field).(subfield);
+            
+            nan_idx = find(isnan(val(:)));
+            inf_idx = find(isinf(val(:)));
+            
+            if ~isempty(nan_idx)
+                error('[Bounds Validation] "%s.%s" contains NaN at indices: %s', ...
+                    field, subfield, mat2str(nan_idx'));
+            end
+            
+            if ~isempty(inf_idx)
+                error('[Bounds Validation] "%s.%s" contains Inf at indices: %s', ...
+                    field, subfield, mat2str(inf_idx'));
+            end
+        end
+    end
+    fprintf('[Bounds Validation] All fields passed.\n');
 end
