@@ -257,7 +257,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     opti.set_initial(a_col, guess.a_col');
 
     % 2) mesh end-points
-    points = N;
+    points = N + 1;
     a = opti.variable(dims, points);
     opti.subject_to(bounds.a.lower'< a < bounds.a.upper');
     opti.set_initial(a, guess.a'); 
@@ -272,7 +272,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     opti.set_initial(FTtilde_col, guess.FTtilde_col');
 
     % 2) mesh end-points
-    points = N;
+    points = N + 1;
     FTtilde = opti.variable(dims, points);
     opti.subject_to(bounds.FTtilde.lower'< FTtilde < bounds.FTtilde.upper');
     opti.set_initial(FTtilde, guess.FTtilde');
@@ -280,7 +280,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
 
     
     % ----- Torque Actuators ----- %
-    dims = num_act;
+    dims = num_actuators;
     points = d * N;
     
     % 1) collocation points
@@ -289,7 +289,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     opti.set_initial(a_a_col, guess.a_a_col');
 
     % 2) mesh end-points
-    points = N;
+    points = N + 1;
     a_a = opti.variable(dims, points);
     opti.subject_to(bounds.a_a.lower'< a_a < bounds.a_a.upper');
     opti.set_initial(a_a, guess.a_a');  
@@ -299,29 +299,28 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     % ----- Muscles ----- %
     % Time derivative of muscle activations (states) at mesh points
     dims = num_muscles;
-    points = N;
+    points = N + 1;
     
     % end points
-    vA = opti.variable(num_muscles, N);
-    opti.subject_to(bounds.vA.lower'*ones(1,N) < vA < bounds.vA.upper'*ones(1,N));
+    vA = opti.variable(dims, points);
+    opti.subject_to(bounds.vA.lower' < vA < bounds.vA.upper');
     opti.set_initial(vA, guess.vA'); 
 
     % ----- Actuator Excitation ----- %
-    e_a = opti.variable(num_actuators, N);
-    opti.subject_to(bounds.e_a.lower'*ones(1, N) < e_a < bounds.e_a.upper'*ones(1,N));
+    dims = num_actuators;
+    e_a = opti.variable(dims, points);
+    opti.subject_to(bounds.e_a.lower' < e_a < bounds.e_a.upper');
     opti.set_initial(e_a, guess.e_a');
 
     % Define "slack" controls
     % Time derivative of muscle-tendon forces (states) at collocation points
     dFTtilde_col = opti.variable(num_muscles, d * N);
-    opti.subject_to(bounds.dFTtilde.lower'*ones(1,d*N) < dFTtilde_col < ...
-            bounds.dFTtilde.upper'*ones(1, d * N));
+    opti.subject_to(bounds.dFTtilde.lower' < dFTtilde_col < bounds.dFTtilde.upper');
     opti.set_initial(dFTtilde_col, guess.dFTtilde_col');
     
     % Time derivative of Qdots (states) at collocation points
     A_col = opti.variable(num_q_ind, d * N);
-    opti.subject_to(bounds.Qdotdots.lower'*ones(1, d * N) < A_col < ...
-            bounds.Qdotdots.upper'*ones(1, d * N));
+    opti.subject_to(bounds.Qdotdots.lower' < A_col < bounds.Qdotdots.upper');
     opti.set_initial(A_col, guess.Qdotdots_col'); 
 
 
