@@ -100,6 +100,9 @@ scaling.Qsdotdot = max(abs(bounds.Qsdotdot.lower), abs(bounds.Qsdotdot.upper));
 bounds.Qsdotdot.lower = (bounds.Qsdotdot.lower)./scaling.Qsdotdot;
 bounds.Qsdotdot.upper = (bounds.Qsdotdot.upper)./scaling.Qsdotdot;
 
+bounds.Qsdotdot.lower_ind = bounds.Qsdotdot.lower(:, independent_coord_idx');
+bounds.Qsdotdot.upper_ind = bounds.Qsdotdot.upper(:, independent_coord_idx');
+
 
 % Now, the way Simbody/Opensim expect the q-part of the state vector isn't
 % simply [q, q_dot], but the individual dimensions of q and q_dot are

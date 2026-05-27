@@ -122,7 +122,7 @@ guess.Qdotdots_all = Qdotdots_spline;
 % collocation points
 guess.Qs_col = Q_col;
 guess.Qdotdots_col = Qdotdots_spline_col;
-
+guess.Qdotdots_col_ind = Qdotdots_spline_col(:, independent_coord_idx);
 
 
 % Do the same for the independent coordinates only.
