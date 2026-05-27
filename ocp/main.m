@@ -48,6 +48,10 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     pathMuscleModel = [pwd,'/muscle_model'];
     addpath(genpath(pathMuscleModel));   
 
+    pathMusclePoly = [pwd,'/muscle_polynomials'];
+    addpath(genpath(pathMusclePoly));   
+
+
     pathCasADiFunctions = [pwd,'/casadi_functions'];
     addpath(genpath(pathCasADiFunctions));
 
@@ -320,8 +324,8 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     
     % Time derivative of Qdots (states) at collocation points
     A_col = opti.variable(num_q_ind, d * N);
-    opti.subject_to(bounds.Qdotdots.lower' < A_col < bounds.Qdotdots.upper');
-    opti.set_initial(A_col, guess.Qdotdots_col'); 
+    opti.subject_to(bounds.Qsdotdot.lower_ind' < A_col < bounds.Qsdotdot.upper_ind');
+    opti.set_initial(A_col, guess.Qdotdots_col_ind'); 
 
 
     % ------------------------------------------------------------------- %
@@ -350,8 +354,8 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     Xj = MX.sym('Xj', 2 * num_q_ind, d); % shape: [num_q * 2, d]
     Xkj = [Xk Xj];  % shape: [num_q * 2, d + 1]
     
-    a_ak = MX.sym('a_ak', num_act);
-    a_aj = MX.sym('a_aj', num_act, d);
+    a_ak = MX.sym('a_ak', num_actuators);
+    a_aj = MX.sym('a_aj', num_actuators, d);
     a_akj = [a_ak a_aj];
     
     
@@ -360,10 +364,10 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     vAk = MX.sym('vAk', num_muscles);
     
     % torque actuator excitation
-    e_ak = MX.sym('e_ak', num_act);
+    e_ak = MX.sym('e_ak', num_actuators);
     
     % dF/dt
-    dFTtildej = MX.sym('dFTtildej', NMuscle,d);
+    dFTtildej = MX.sym('dFTtildej', num_muscles,d);
     
     % q_dotdot: remember, we're using implicit formulation. Therefore,
     % accelerations are treated as "controls".
@@ -374,12 +378,12 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
 
 
     % ------- Experimental Data to Track ------- %
-    Qs_track_k = MX.sym('Qs_track_k', size(Qs_scaled, 2));
-    Qs_track_j = MX.sym('Qs_track_j', size(Qs_scaled, 2), d);
+    Qs_track_k = MX.sym('Qs_track_k', num_q_all);
+    Qs_track_j = MX.sym('Qs_track_j', num_q_all, d);
     Qs_track_kj = [Qs_track_k Qs_track_j];
     
-    Qdots_track_k = MX.sym('Qdots_track_k', size(Qs_scaled, 2));
-    Qdots_track_j = MX.sym('Qdots_track_j', size(Qs_scaled, 2), d);
+    Qdots_track_k = MX.sym('Qdots_track_k', num_q_all);
+    Qdots_track_j = MX.sym('Qdots_track_j', num_q_all, d);
     Qdots_track_kj = [Qdots_track_k Qdots_track_j];
     
     num_grfs = 6;
@@ -415,23 +419,23 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
 
     % we need to make use of the unscaled version of the data
     Xkj_nsc = MX.zeros(size(Xkj));
-    Xkj_nsc(1:2:end, :) = Xkj(1:2:end,:).*scaling.Qs';
-    Xkj_nsc(2:2:end, :) = Xkj(2:2:end,:).*scaling.Qsdot';
+    Xkj_nsc(1:2:end, :) = Xkj(1:2:end,:).*scaling.Qs(:, independent_coord_idx)';
+    Xkj_nsc(2:2:end, :) = Xkj(2:2:end,:).*scaling.Qsdot(:, independent_coord_idx)';
    
     FTtildekj_nsc = FTtildekj.*(scaling.FTtilde');
     
     dFTtildej_nsc = dFTtildej.*scaling.dFTtilde;
-    Aj_nsc = Aj.*(scaling.Qdotdots');  
+    Aj_nsc = Aj.*(scaling.Qsdotdot(:, independent_coord_idx)');  
     
     vAk_nsc = vAk.*scaling.vA;  
 
      
     % ---------- CasADi functions ---------- %
-    f_muscle = buildMuscleFunction(pathMuscleModel);
+    f_muscle = buildMuscleFunction(pathMusclePoly);
     force_equilibrium = buildForceEquilibriumFunc(pathMuscleModel, num_muscles, MTparameters);
     
     % Torque actuation dynamics
-    activation_dynamics_function = torque_activation_dynamics_casadi(pathMuscleModel, num_act);
+    activation_dynamics_function = torque_activation_dynamics_casadi(pathMuscleModel, num_actuators);
 
     % --- sum of squares --- %
     % q
@@ -465,35 +469,29 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     % --- joint moments --- %
     
     % active elements
-    muscle_spanning_joint_file = [polyResultsPath "/muscle_spanning_joints_info.mat"];
+    muscle_spanning_joint_file = fullfile(pathMusclePoly, "muscle_spanning_joints_info.mat");
     muscle_spanning_joint_info = load(muscle_spanning_joint_file);
+    muscle_joint_info_fieldnames = fieldnames(muscle_spanning_joint_info);
+    muscle_joint_info_field = muscle_joint_info_fieldnames{1};
+
     
     % loop through the DoFs spanned by the model muscles 
     for n = 1:size(dof_indices, 1)
-        % retrieve row of 0's and 1's for the current DoF
-        dof_values = muscle_spanning_joint_info(:, n);
-        
         % find which muscles span the current DoF
-        indices = find(dof_values);
-
+        indices = find(muscle_spanning_joint_info.(muscle_joint_info_field)(n, :) == 1); 
+        
         % get number of muscles that span the current DoF
-        D = size(indices, 1);
+        D = size(indices, 2);
 
         % get DoF name
-        dof_name = dof_names(:, n);
+        dof_name = dof_names{n};
 
         % generate function
         M_functions.(dof_name) = compute_active_moment(D);
         
     end
 
-    % passive elements
-    M_passive = compute_passive_moment();
-
     
-    % Initialise cost function value: J
-    J = 0;
-
     % Read the weights of the cost function from config file
     W = config_struct.("W");
     
