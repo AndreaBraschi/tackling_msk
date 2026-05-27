@@ -1,4 +1,4 @@
-function activation_dynamics_function = torque_activation_dynamics_casadi(num_actuators, muscle_model_path)
+function activation_dynamics_function = torque_activation_dynamics_casadi(muscle_model_path, num_actuators)
 import casadi.*
 addpath(muscle_model_path);
 
