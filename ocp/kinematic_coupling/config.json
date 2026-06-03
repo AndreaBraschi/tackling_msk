@@ -1,45 +1,4 @@
 {
-    "auxSTERNrjnt_r1_con": {
-        "dependent_coordinate": "rollRSCA",
-        "independent_coordinate": "auxSTERNrjnt_r1",
-        "coupling": "linear",
-        "coefficients": [4.99, 0]
-    },
-
-    "auxSTERNrjnt_r2_con": {
-        "dependent_coordinate": "pitchRSCA",
-        "independent_coordinate": "auxSTERNrjnt_r2",
-        "coupling": "linear",
-        "coefficients": [-0.5056, 0]
-    },
-
-    "auxSTERNrjnt_r3_con": {
-        "dependent_coordinate": "yawRSCA",
-        "independent_coordinate": "auxSTERNrjnt_r3",
-        "coupling": "linear",
-        "coefficients": [0.7842, 0]
-    },
-
-    "auxSTERNljnt_r1_con": {
-        "dependent_coordinate": "rollLSCA",
-        "independent_coordinate": "auxSTERNljnt_r1",
-        "coupling": "linear",
-        "coefficients": [4.99, 0]
-    },
-    "auxSTERNljnt_r2_con": {
-        "dependent_coordinate": "pitchLSCA",
-        "independent_coordinate": "auxSTERNljnt_r2",
-        "coupling": "linear",
-        "coefficients": [-0.5056, 0]
-    },
-
-    "auxSTERNljnt_r3_con": {
-        "dependent_coordinate": "yawLSCA",
-        "independent_coordinate": "auxSTERNljnt_r3",
-        "coupling": "linear",
-        "coefficients": [0.7842, 0]
-    },
-
     "aux7jnt_r1_con": {
         "dependent_coordinate": "aux7jnt_r1",
         "independent_coordinate": "auxt1jnt_r1",
@@ -203,5 +162,47 @@
         "independent_coordinate": "arm_flex_l",
         "coupling": "cubic",
         "coefficients": [-0.00981185, 0.04750721, 0.05118978, 0.39978543]
+    },
+
+    "auxSTERNrjnt_r1_con": {
+        "dependent_coordinate": "rollRSCA",
+        "independent_coordinate": "auxSTERNrjnt_r1",
+        "coupling": "linear",
+        "coefficients": [4.99, 0]
+    },
+
+    "auxSTERNrjnt_r2_con": {
+        "dependent_coordinate": "pitchRSCA",
+        "independent_coordinate": "auxSTERNrjnt_r2",
+        "coupling": "linear",
+        "coefficients": [-0.5056, 0]
+    },
+
+    "auxSTERNrjnt_r3_con": {
+        "dependent_coordinate": "yawRSCA",
+        "independent_coordinate": "auxSTERNrjnt_r3",
+        "coupling": "linear",
+        "coefficients": [0.7842, 0]
+    },
+
+    "auxSTERNljnt_r1_con": {
+        "dependent_coordinate": "rollLSCA",
+        "independent_coordinate": "auxSTERNljnt_r1",
+        "coupling": "linear",
+        "coefficients": [4.99, 0]
+    },
+
+    "auxSTERNljnt_r2_con": {
+        "dependent_coordinate": "pitchLSCA",
+        "independent_coordinate": "auxSTERNljnt_r2",
+        "coupling": "linear",
+        "coefficients": [-0.5056, 0]
+    },
+
+    "auxSTERNljnt_r3_con": {
+        "dependent_coordinate": "yawLSCA",
+        "independent_coordinate": "auxSTERNljnt_r3",
+        "coupling": "linear",
+        "coefficients": [0.7842, 0]
     }
 }
