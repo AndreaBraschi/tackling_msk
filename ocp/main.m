@@ -63,8 +63,11 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
 
     pathPolynomial = [pwd,'/muscle_polynomials'];
     addpath(genpath(pathPolynomial));
+
+    pathConstraints = [pwd,'/kinematic_coupling'];
+    addpath(genpath(pathConstraints));
     
-    
+   
     % Collocation scheme
     N = config_struct.("collocation").("number_of_segments");   % number of mesh intervals
     d = config_struct.("collocation").("num_points"); % number of collocation points per mesh interval
@@ -135,6 +138,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
 
     % independent coordinates indices
     independent_coord_idx = setdiff(dof_indices_all, dependent_coord_idx);
+    independent_coord_names = q_names(independent_coord_idx);
     
     
     % differentiate between number of independent and dependent coords 
@@ -378,12 +382,12 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
 
 
     % ------- Experimental Data to Track ------- %
-    Qs_track_k = MX.sym('Qs_track_k', num_q_all);
-    Qs_track_j = MX.sym('Qs_track_j', num_q_all, d);
+    Qs_track_k = MX.sym('Qs_track_k', num_q_ind);
+    Qs_track_j = MX.sym('Qs_track_j', num_q_ind, d);
     Qs_track_kj = [Qs_track_k Qs_track_j];
     
-    Qdots_track_k = MX.sym('Qdots_track_k', num_q_all);
-    Qdots_track_j = MX.sym('Qdots_track_j', num_q_all, d);
+    Qdots_track_k = MX.sym('Qdots_track_k', num_q_ind);
+    Qdots_track_j = MX.sym('Qdots_track_j', num_q_ind, d);
     Qdots_track_kj = [Qdots_track_k Qdots_track_j];
     
     num_grfs = 6;
@@ -402,8 +406,6 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     ineq_constr1 = {}; % inequality constraint
     ineq_constr2 = {}; 
     ineq_constr3 = {}; 
-    ineq_constr4 = {}; 
-    g_names_coll = {}; % Initialize names of constraints at collocation points
     
     % ------------------------------------------------------------------- %
     % The following section is where the external function is called.
@@ -439,13 +441,13 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
 
     % --- sum of squares --- %
     % q
-    J_q = sum_of_squares('q', num_q_all);
+    J_q = sum_of_squares('q', num_q_ind);
     
     % q_dot
-    J_q_dot = sum_of_squares('q_dot', num_q_all);
+    J_q_dot = sum_of_squares('q_dot', num_q_ind);
 
     % q_dot_dot
-    J_q_dot_dot = sum_of_squares('q_dot_dot', num_q_all);
+    J_q_dot_dot = sum_of_squares('q_dot_dot', num_q_ind);
 
     % muscle activation
     J_muscles_act = sum_of_squares('muscle_act', num_muscles);
@@ -499,57 +501,48 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     % loop through the collocation points
     for i = 1:d 
         
-        [Xkj_nsc_all, Aj_all] = apply_constraints(Xkj_nsc(:, i + 1), Aj(:, i + 1));
-        
-        % evaluate external function
-        Ti = F([Xkj_nsc_all, Aj_all]);
+        % current q-part of state vector
+        x_i = Xkj_nsc(:, i + 1);
 
-        Q_kj_nsc = Xkj_nsc_all(1:2:end, i + 1); % +1 because first point is the mesh beginning
-        Qdot_kj_nsc = Xkj_nsc_all(2:2:end, i + 1);
+        % current q accelerations
+        acc_i = Aj(:, i);
+
+        [x_all_i, acc_all_i] = apply_constraints(x_i, acc_i, q_names, independent_coord_idx);
+
+        % evaluate external function
+        Ti = F(vertcat(x_all_i, acc_all_i));
+
+        Q_kj_nsc = x_all_i(1:2:end); % +1 because first point is the mesh beginning
+        Qdot_kj_nsc = x_all_i(2:2:end);
         
         % --- compute: lMT (muscle-tendon length), d_lMT/dt, MA(moment arm)
         
-        % isolate DoFs that are spanned by muscles        
+        % isolate DoFs that are spanned by muscles and their time derivatives        
         dof_i = Q_kj_nsc(dof_indices);  
         dof_dot_i = Qdot_kj_nsc(dof_indices);
 
         [lMT_i, vMT_i, dM_i] = f_muscle(dof_i, dof_dot_i);
 
         % Get muscle-tendon forces and derive Hill-equilibrium 
-        [hill_err_i, FT_i, ~, ~, ~] = force_equilibrium(akj(:, i+1), ...
+        [hill_err_i, FT_i, ~, ~, ~] = force_equilibrium(akj(:, i + 1), ...
             FTtildekj_nsc(:, i+1), dFTtildej_nsc(:, i), lMT_i, vMT_i);
-
-        
-        % --------------------------------------------------------------- %
-        % Use the C matrix, from the collocation scheme, to compute the
-        % derivative approximation at the collocation points of the
-        % segment.
-        % --------------------------------------------------------------- %
-        Q_nsc_dot  = Xkj_nsc_all(1:2:end,:) * C(:, i+1);  % [num_q, d + 1] @ [d+1, d] -> [num_q, d]
-        Qdots_nsc_dot  = Xkj_nsc_all(2:2:end,:) * C(:, i+1);  % [num_q, d + 1] @ [d+1, d] -> [num_q, d]          
-        
-        FTtilde_nsc_dot  = FTtildekj_nsc * C(:, i+1);% [num_q, d + 1] @ [d+1, d] -> [num_q, d]
-   
-        a_dot  = akj * C(:, i+1); % [num_muscle, d + 1] @ [d+1, d] -> [num_muscles, d]
-        
-        a_a_dot  = a_akj * C(:, i+1); % [num_actuators, d + 1] @ [d+1, d] -> [num_actuators, d]
         
         % ---------------- Cost Function Terms ---------------- %
         % Q
-        q_diff = Q_kj_nsc - Qs_track_kj(:, i + 1);
+        q_diff = Q_kj_nsc(independent_coord_idx) - Qs_track_kj(:, i + 1);
         q_term = W.q * B(i + 1) * J_q(q_diff) * mesh_T;
 
         % Q dot
-        q_dot_diff = Qdots_nsc_dot - Qdot_kj_nsc(:, i + 1);
+        q_dot_diff = Qdot_kj_nsc(independent_coord_idx) - Qdots_track_kj(:, i + 1);
         q_dot_term = W.q_dot * B(i + 1) * J_q_dot(q_dot_diff) * mesh_T;
 
         % GRF
-        Ti_GRF_scaled = Tj(num_q_all + dll_grf_indices, 1)./scaling.GRF';
-        GRF_term = W.GRF * B(i + 1) * (J_GRF(Ti_GRF_scaled - GRF_track_kj(:, i))) * mesh_T;
+        Ti_GRF_scaled = Ti(num_q_all + dll_grf_indices, 1)./scaling.GRF';
+        GRF_term = W.GRF * B(i + 1) * (J_GRF(Ti_GRF_scaled - GRF_track_kj(:, i + 1))) * mesh_T;
 
         % GRM
-        Ti_GRM_scaled = Tj(num_q_all + dll_grm_indices, 1)./scaling.GRM';
-        GRM_term = W.GRM * B(i + 1) * (J_GRM(Ti_GRM_scaled - GRM_track_kj(:, i))) * mesh_T;
+        Ti_GRM_scaled = Ti(num_q_all + dll_grm_indices, 1)./scaling.GRM';
+        GRM_term = W.GRM * B(i + 1) * (J_GRM(Ti_GRM_scaled - GRM_track_kj(:, i + 1))) * mesh_T;
 
         % muscle activation
         act_term = W.a * B(i + 1) * (J_muscles_act(akj(:, i + 1))) * mesh_T;
@@ -558,7 +551,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         act_der_term = W.vA * B(i + 1) * (J_muscles_act_der(vAk) * mesh_T);
 
         % Q dot dot: Accelerations
-        q_dot_dot_term = W.acc * B(i + 1) * (J_q_dot_dot(Aj_all(:, i)) * mesh_T);
+        q_dot_dot_term = W.acc * B(i + 1) * (J_q_dot_dot(acc_i) * mesh_T);
 
         % derivative of MT force
         dMTf_dt_term = B(i + 1) * (J_MT_unit(dFTtildej(:, i)) * mesh_T);
@@ -575,6 +568,19 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         % --------------------------------------------------------------- %
         %                      Equality constraints                       %
         % --------------------------------------------------------------- %        
+        % Use the C matrix, from the collocation scheme, to compute the
+        % derivative approximation at the collocation points of the
+        % segment.
+
+        Q_nsc_dot  = Xkj_nsc(1:2:end, :) * C(:, i + 1);  % [num_q, d + 1] @ [d+1, 1] -> [num_q, d]
+        Qdots_nsc_dot  = Xkj_nsc(2:2:end, :) * C(:, i + 1);  % [num_q, 1] @ [d + 1, 1] -> [num_q, d]          
+        
+        FTtilde_nsc_dot  = FTtildekj_nsc * C(:, i + 1);% [num_q, d + 1] @ [d+1, 1] -> [num_q, d]
+   
+        a_dot  = akj * C(:, i + 1); % [num_muscle, d + 1] @ [d+1, 1] -> [num_muscles, d]
+        
+        a_a_dot  = a_akj * C(:, i + 1); % [num_actuators, d + 1] @ [d+1, 1] -> [num_actuators, d]
+         
         
         % Muscle activation time derivative
         eq_constr{end+1} = (mesh_T * vAk_nsc - a_dot)./scaling.a;
@@ -583,7 +589,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         eq_constr{end+1} = (mesh_T * dFTtildej_nsc(:, i) - FTtilde_nsc_dot)./scaling.FTtilde';
         
         % Skeleton dynamics (implicit formulation)               
-        Qdotj_nsc = Xkj_nsc(2:2:end, i +1 ); % velocity
+        Qdotj_nsc = Xkj_nsc(2:2:end, i + 1); % velocity
         eq_constr{end+1} = (mesh_T * Qdotj_nsc - Q_nsc_dot)./scaling.QsQdots(1:2:end)';
         eq_constr{end+1} = (mesh_T * Aj_nsc(:, i) - Qdots_nsc_dot)./scaling.QsQdots(2:2:end)';
 
