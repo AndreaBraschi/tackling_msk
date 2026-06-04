@@ -57,5 +57,10 @@
     "scale_factors": {
     "pelvis_residuals": 400,
     "joint_moments": 350
+    },
+
+
+    "optimiser": {
+    "tolerance": 4
     }
 }
