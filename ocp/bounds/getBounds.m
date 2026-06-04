@@ -1,4 +1,5 @@
-function [bounds, scaling] = getBounds(Qs, independent_coord_idx, GRFs, num_q, num_muscles, num_act, grf_indices, grm_indices)
+function [bounds, scaling] = getBounds(Qs, independent_coord_idx, GRFs, ...
+    num_q, num_muscles, num_act, grf_indices, grm_indices, scale_factors)
 
 % This function assign the bounds to: model coordinates (Qs), Ground
 % Reaction Forces (GRF), muscle activation, rate of change of muscle
@@ -17,10 +18,8 @@ function [bounds, scaling] = getBounds(Qs, independent_coord_idx, GRFs, num_q, n
 import org.opensim.modeling.*
 
 time = Qs.time;
-T = size(time, 1);  % period
-
 y = struct('pos', {}, 'vel', {}, 'acc', {});
-dims = num_q * 2;
+body_dofs = 6;  % theoretical free DoFs of a rigid body
 
 % Approximate 1st and 2nd derivative of Qs using analytical cubic spline
 % derivation.
@@ -199,11 +198,21 @@ bounds.e_a.upper = ones(1, num_act);
 % fixed scaling factor
 scaling.e_a = 1;
 
-% look for invalid numerical values
+% -------------------------- Residuals -------------------------- %
+pelvis_sf = scale_factors.("pelvis_residuals");
+bounds.pelvis_res.lower = -pelvis_sf * ones(1, body_dofs);
+bounds.pelvis_res.upper = pelvis_sf * ones(1, body_dofs);
+
+scaling.pelvis_res  = max(abs(bounds.pelvis_res.lower), abs(bounds.pelvis_res.upper)); 
+bounds.pelvis_res.lower = (bounds.pelvis_res.lower)./scaling.pelvis_res;
+bounds.pelvis_res.upper = (bounds.pelvis_res.upper)./scaling.pelvis_res;
+
+
+% -------------------------- Validate struct -------------------------- %
 validate_bounds(bounds);
 
-% ------------------------- Contact Model bounds ------------------------- %
 
+% ------------------------- Contact Model bounds ------------------------ %
 % ----> why there was no bounds for stiffness and damping? 
 % ----> were they fixed?
 % ----> what should I do? give full flexibility of constraining to some
