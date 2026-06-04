@@ -194,31 +194,49 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     GRFs.data = GRFs.data(grf_init:grf_end, :);
 
     % find values at:
-    % mesh points
-    GRF_mesh = interp1(GRFs.time, GRFs.data(:, grf_indices), time_intervals);
-    GRM_mesh = interp1(GRFs.time, GRFs.data(:, grm_indices), time_intervals);
-
     % collocation points
     GRF_col = interp1(GRFs.time, GRFs.data(:, grf_indices), time_grid');
     GRM_col = interp1(GRFs.time, GRFs.data(:, grm_indices), time_grid');
 
+    % import scaled factors
+    scale_factors = config_struct.("scale_factors");
+
     % ----------------------------- Bounds  ----------------------------- %
-    [bounds, scaling] = getBounds(Qs, independent_coord_idx, GRFs, num_q_all, num_muscles, num_actuators, grf_indices, grm_indices);
+    [bounds, scaling] = getBounds(Qs, independent_coord_idx, GRFs, ...
+        num_q_all, num_muscles, num_actuators, grf_indices, grm_indices, ...
+        scale_factors);
 
     
     % -------------------------- Initial Guess  ------------------------- %
-    guess = getGuess(Qs, independent_coord_idx, time_intervals, time_grid, num_q_all, num_muscles, num_actuators, scaling);
+    guess = getGuess(Qs, independent_coord_idx, time_intervals, time_grid, ...
+        num_q_all, num_muscles, num_actuators, scaling);
     
     
     % ------------------- Experimental Data Scaling  ------------------- %
     % we have the scaled experimental data stored in the 'guess' struct.
     % q
-    Qs_scaled = guess.Qs_all(:, 1:2:end);
-    Qs_scaled_col = guess.Qs_col(:, 1:2:end);
+    Qs_scaled_all = guess.Qs_all(:, 1:2:end);
+    Qs_scaled_col_all = guess.Qs_col(:, 1:2:end);
+    % retrieve just independent coordinates
+    Qs_scaled = Qs_scaled_all(:, independent_coord_idx);
+    Qs_scaled_col = Qs_scaled_col_all(:, independent_coord_idx);
     
     % q dot
-    Qdots_scaled = guess.Qs_all(:, 2:2:end);
-    Qdots_scaled_col = guess.Qs_col(:, 2:2:end);
+    Qdots_scaled_all = guess.Qs_all(:, 2:2:end);
+    Qdots_scaled_col_all = guess.Qs_col(:, 2:2:end);
+    % retrieve just independent coordinates
+    Qdots_scaled = Qdots_scaled_all(:, independent_coord_idx);
+    Qdots_scaled_col = Qdots_scaled_col_all(:, independent_coord_idx);
+    
+
+    % GRF
+    scaling.GRF = max(abs(min(GRF_col)), abs(max(GRF_col)));
+    GRF_scaled = GRF_col./scaling.GRF;
+
+
+    % GRM
+    scaling.GRM = max(abs(min(GRM_col)), abs(max(GRM_col)));
+    GRM_scaled = GRM_col./scaling.GRM;
 
 
     % ------------------------------------------------------------------- %
@@ -332,6 +350,14 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     opti.set_initial(A_col, guess.Qdotdots_col_ind'); 
 
 
+    % ----------------------- Residuals  ----------------------- %
+    % pelvis
+    pelvis_res_col = opti.variable(num_body_dof, d * N);
+    opti.subject_to(bounds.pelvis_res.lower'< pelvis_res_col < bounds.pelvis_res.upper');
+    opti.set_initial(pelvis_res_col, zeros(num_body_dof, N * d));
+
+
+    
     % ------------------------------------------------------------------- %
     % The following section uses the "MX" object from the CasADi library
     % to register symbolic variables that will later be used in CasADi 
@@ -590,8 +616,8 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         
         % Skeleton dynamics (implicit formulation)               
         Qdotj_nsc = Xkj_nsc(2:2:end, i + 1); % velocity
-        eq_constr{end+1} = (mesh_T * Qdotj_nsc - Q_nsc_dot)./scaling.QsQdots(1:2:end)';
-        eq_constr{end+1} = (mesh_T * Aj_nsc(:, i) - Qdots_nsc_dot)./scaling.QsQdots(2:2:end)';
+        eq_constr{end+1} = (mesh_T * Qdotj_nsc - Q_nsc_dot)./scaling.Qs(:, independent_coord_idx)';
+        eq_constr{end+1} = (mesh_T * Aj_nsc(:, i) - Qdots_nsc_dot)./scaling.Qsdot(:, independent_coord_idx)';
 
 
         % Torque actuator activation dynamics (explicit formulation)   
@@ -601,7 +627,8 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         % Computed torque from CasADi should be equal to the net moments
         % coming out of the OpenSim model. We do this only for the DoFs
         % that aren't spanned by the muscles.
-        eq_constr{end+1} = Ti(other_indices, 1)./scaling.a_a - a_akj(:, i+1);
+        joint_moments_sf = scale_factors.("joint_moments");
+        eq_constr{end+1} = Ti(other_indices, 1)./joint_moments_sf - a_akj(:, i+1);
 
         % Path constraints 
         % --------------------------------------------------------------- %
@@ -609,19 +636,25 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         % coming out of the external function must be equal to the sum of:
         % the moment cause by muscles and passive joint elements.
 
+        % ----- pelvis ----- %
+        % here, we need to scale the pelvis residuals coming out of the
+        % external function
+        pelvis_T = Ti(1:6, 1)./scale_factors.("pelvis_residuals");
+
+        eq_constr{end+1} = pelvis_res_j(:, i) - pelvis_T;
+        
         % loop through the DoFs spanned by the model muscles 
         for n = 1:size(dof_indices, 1)
-            % retrieve row of 0's and 1's for the current DoF
-            dof_values = muscle_spanning_joint_info(:, n);
-        
+            
             % find which muscles span the current DoF
-            indices = dof_values;
-
+            indices = find(muscle_spanning_joint_info.(muscle_joint_info_field)(n, :) == 1); 
+                    
             % get DoF name
-            dof_name = dof_names(:, n);
+            dof_name = dof_names{n};
+
 
             % find the index of the DoF wrt the full list of coordinates
-            idx = strcmp(q_names, dependent_coord_name);
+            idx = find(strcmp(q_names, dof_name));
 
 
             % ----------- active elements ----------- %
@@ -641,7 +674,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         end
 
         % Contraction dynamics (implicit formulation)
-        eq_constr{end+1} = Hilldiffj;
+        eq_constr{end+1} = hill_err_i;
 
         
         % --------------------------------------------------------------- %
@@ -666,13 +699,16 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     % Now we define a CasADi function that takes in the design variables at
     % the collocation points and outputs the cost function (J) and the sets
     % of constraints.
-    f_coll = Function('f_coll', {Xk, Xj, Aj, ak, aj, vAk, ...
+    f_coll = Function('f_coll', {Xk, Xj, Aj, ...
+        ak, aj, vAk, ...
         FTtildek, FTtildej, dFTtildej, ...
-        a_ak, a_aj, e_ak, dFTtildej,...
-        Qs_scaled_k, Qs_scaled_j, ...
-        Qdots_scaled_k, Qdots_scaled_j,...
-        GRF_scaled_k, GRF_scaled_j, ...
-        GRM_scaled_k, GRM_scaled_j},...
+        a_ak, a_aj, e_ak,...
+        ...
+        Qs_track_k, Qs_track_j, ...
+        Qdots_track_k, Qdots_track_j,...
+        GRF_track_j, ...
+        GRM_track_j, ...
+        pelvis_res_j},...
         {eq_constr, ineq_constr1, ineq_constr2, ineq_constr3, J});
 
     % register function as parallel form across the number of segments of
@@ -683,16 +719,15 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     % finally, we evaluate everything that was built symbolically
     [eq_constr_all, ineq_constr1_all, ineq_constr2_all, ...
         ineq_constr3_all, J_all] = f_coll_map(X(:, 1:end-1), X_col, A_col, ...
-        a(:, 1:end-1), a_col, vA,...
+        a(:, 1:end-1), a_col, vA(:, 1:end-1),...
         FTtilde(:, 1:end-1), FTtilde_col, dFTtilde_col, ...
-        a_a, a_a_col,e_a,...
+        a_a(:, 1:end-1), a_a_col, e_a(:, 1:end-1),...
         ...
-        Qs_scaled(1:end-1,:)', ...
-        Qs_scaled_col',...
-        Qdots_scaled(1:end-1,:)',...
-        Qdots_scaled_col',...
-        GRF_col',...
-        GRM_col');
+        Qs_scaled(1:end-1, :)', Qs_scaled_col',...
+        Qdots_scaled(1:end-1,:)', Qdots_scaled_col',...
+        GRF_scaled',...
+        GRM_scaled', ...
+        pelvis_res_col);
 
 
     % --------------------------------------------------------------- %
