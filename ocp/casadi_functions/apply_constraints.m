@@ -30,9 +30,9 @@ q_dot = x(2:2:end);
 num_q = size(q_all_list, 2);
 
 % new symbolic matrix comprising all q's: dependent and independent
-q_all = MX.sym('q_all', num_q);
-q_dot_all = MX.sym('q_dot_all', num_q);
-acc_all = MX.sym('acc_all', num_q);
+q_all = MX.zeros(num_q, 1);
+q_dot_all = MX.zeros(num_q, 1);
+acc_all = MX.zeros(num_q, 1);
 
 % read constraint config file
 constraint_names = fieldnames(config_struct);
