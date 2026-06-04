@@ -431,8 +431,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     eq_constr = {}; % equality constraint vector
     ineq_constr1 = {}; % inequality constraint
     ineq_constr2 = {}; 
-    ineq_constr3 = {}; 
-    
+
     % ------------------------------------------------------------------- %
     % The following section is where the external function is called.
     % Furthermore, here is where the CasADi function create the
@@ -694,7 +693,6 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     eq_constr = vertcat(eq_constr{:});
     ineq_constr1 = vertcat(ineq_constr1{:});
     ineq_constr2 = vertcat(ineq_constr2{:});
-    ineq_constr3 = vertcat(ineq_constr3{:});
 
     % Now we define a CasADi function that takes in the design variables at
     % the collocation points and outputs the cost function (J) and the sets
@@ -709,7 +707,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         GRF_track_j, ...
         GRM_track_j, ...
         pelvis_res_j},...
-        {eq_constr, ineq_constr1, ineq_constr2, ineq_constr3, J});
+        {eq_constr, ineq_constr1, ineq_constr2, J});
 
     % register function as parallel form across the number of segments of
     % the trajectory.
@@ -717,8 +715,8 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
 
 
     % finally, we evaluate everything that was built symbolically
-    [eq_constr_all, ineq_constr1_all, ineq_constr2_all, ...
-        ineq_constr3_all, J_all] = f_coll_map(X(:, 1:end-1), X_col, A_col, ...
+    [eq_constr_all, ineq_constr1_all, ineq_constr2_all, J_all] = f_coll_map( ...
+        X(:, 1:end-1), X_col, A_col, ...
         a(:, 1:end-1), a_col, vA(:, 1:end-1),...
         FTtilde(:, 1:end-1), FTtilde_col, dFTtilde_col, ...
         a_a(:, 1:end-1), a_a_col, e_a(:, 1:end-1),...
@@ -730,23 +728,26 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         pelvis_res_col);
 
 
+    % add constraints to opti struct
+    opti.subject_to(eq_constr_all == 0);
+    opti.subject_to(ineq_constr1_all(:) >= 0);
+    opti.subject_to(ineq_constr2_all(:) <= 1/tact);
+    
     % --------------------------------------------------------------- %
     %                       mesh end points                           %
     % --------------------------------------------------------------- %
     % Loop over segments
-    Q_k = Xk(1:2:end, :);
-    Q_j = Xj(1:2:end, :);
+    Q_mesh = X(1:2:end, :);
+    Q_col = X_col(1:2:end, :);
     
-    Qdot_k = Xk(2:2:end, :);
-    Qdot_j = Xj(2:2:end, :);
+    Qdot_mesh = X(2:2:end, :);
+    Qdot_col = X_col(2:2:end, :);
     
     col_indices = [1, 2, 3];
     for k=1:N
-        x_init = col_indices(1);
-        x_end = col_indices(end) + 3;
 
-        q_kj = [Q_k(:, k), Q_j(:, col_indices)];
-        qdot_kj = [Qdot_k(:, k), Qdot_j(:, x_init:x_end)];
+        q_kj = [Q_mesh(:, k), Q_col(:, col_indices)];
+        qdot_kj = [Qdot_mesh(:, k), Qdot_col(:, col_indices)];
         
         akj = [a(:, k), a_col(:, col_indices)];
         FTtildekj = [FTtilde(:, k), FTtilde_col(:, col_indices)];
@@ -754,8 +755,8 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         
         % Add equality constraints (next interval starts with end values of 
         % states from previous interval)
-        opti.subject_to(Q_k(:, k + 1) == q_kj * D);
-        opti.subject_to(Qdot_k(:, k + 1) == qdot_kj * D);
+        opti.subject_to(Q_mesh(:, k + 1) == q_kj * D);
+        opti.subject_to(Qdot_mesh(:, k + 1) == qdot_kj * D);
         opti.subject_to(a(:, k + 1) == akj * D);
         opti.subject_to(FTtilde(:, k + 1) == FTtildekj * D);
         opti.subject_to(a_a(:, k + 1) == a_akj * D);
@@ -764,15 +765,18 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         col_indices = col_indices + 3;
     end
     
-    
+    % sum objective function over all mesh segments
+    J_sum = sum(J_all);
+
     % --------------------------------------------------------------- %
     %                          NLP solver                             %
     % --------------------------------------------------------------- %           
-    opti.minimize(J_all);
+    opti.minimize(J_sum);
     options.ipopt.hessian_approximation = 'limited-memory';
     options.ipopt.mu_strategy  = 'adaptive';
     options.ipopt.max_iter = 10000;
-    options.ipopt.tol = 1*10^(-tol_ipopt);
+    tolerance = config_struct.("optimiser").("tolerance");
+    options.ipopt.tol = 1*10^(-tolerance);
     options.ipopt.print_timing_statistics='yes';
     opti.solver('ipopt', options);  
     
