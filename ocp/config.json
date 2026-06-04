@@ -52,5 +52,10 @@
     "lGRF": [2, 3, 4], 
     "rGRM": [11, 12, 13],
     "lGRM": [5, 6, 7]
+    },
+
+    "scale_factors": {
+    "pelvis_residuals": 400,
+    "joint_moments": 350
     }
 }
