@@ -66,6 +66,9 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
 
     pathConstraints = [pwd,'/kinematic_coupling'];
     addpath(genpath(pathConstraints));
+
+    pathOpt = [pwd,'/opt'];
+    addpath(genpath(pathOpt));
     
    
     % Collocation scheme
@@ -125,11 +128,6 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     % muscles.
     other_indices = setdiff(dof_indices_all, dof_indices);
 
-    % we register the number of the DoFs that aren't spanned by the muscles
-    % as "number of actuators". This simply means that the force actuator
-    % for these coordinates is modelled as an idealised actuator, and it
-    % doesn't have all the inherent complexity of a muscle.
-    num_actuators = size(other_indices, 2);
 
     % read names of dependent coordinates
     dependent_coord_names = config_struct.("dependent_coord_names");
@@ -139,6 +137,14 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     % independent coordinates indices
     independent_coord_idx = setdiff(dof_indices_all, dependent_coord_idx);
     independent_coord_names = q_names(independent_coord_idx);
+
+
+    % we register the number of the independent DoFs that aren't spanned 
+    % by muscles as "number of actuators". This simply means that the force
+    % actuator for these coordinates is modelled as an idealised actuator, 
+    % and it doesn't have all the inherent complexity of a muscle.
+    independent_act_indices = setdiff(other_indices, independent_coord_idx);
+    num_actuators = size(independent_act_indices, 2);
     
     
     % differentiate between number of independent and dependent coords 
@@ -304,7 +310,6 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     opti.set_initial(FTtilde, guess.FTtilde');
 
 
-    
     % ----- Torque Actuators ----- %
     dims = num_actuators;
     points = d * N;
@@ -320,6 +325,8 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     opti.subject_to(bounds.a_a.lower'< a_a < bounds.a_a.upper');
     opti.set_initial(a_a, guess.a_a');  
 
+
+    fprintf('number of states   : %d\n', num_q_ind * 2 + num_actuators + num_muscles * 2);
 
     % ----------------------- Controls  ----------------------- %
     % ----- Muscles ----- %
@@ -349,6 +356,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     opti.subject_to(bounds.Qsdotdot.lower_ind' < A_col < bounds.Qsdotdot.upper_ind');
     opti.set_initial(A_col, guess.Qdotdots_col_ind'); 
 
+    fprintf('number of controls : %d\n', num_muscles + num_actuators + num_q_ind);
 
     % ----------------------- Residuals  ----------------------- %
     % pelvis
@@ -357,7 +365,10 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     opti.set_initial(pelvis_res_col, zeros(num_body_dof, N * d));
 
 
-    
+    fprintf('Decision variables : %d\n', opti.nx);
+    fprintf('Bound Constraints        : %d\n', opti.ng);
+
+
     % ------------------------------------------------------------------- %
     % The following section uses the "MX" object from the CasADi library
     % to register symbolic variables that will later be used in CasADi 
@@ -508,13 +519,13 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         indices = find(muscle_spanning_joint_info.(muscle_joint_info_field)(n, :) == 1); 
         
         % get number of muscles that span the current DoF
-        D = size(indices, 2);
+        dof_num_muscles = size(indices, 2);
 
         % get DoF name
         dof_name = dof_names{n};
 
         % generate function
-        M_functions.(dof_name) = compute_active_moment(D);
+        M_functions.(dof_name) = compute_active_moment(dof_num_muscles);
         
     end
 
@@ -537,7 +548,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         % evaluate external function
         Ti = F(vertcat(x_all_i, acc_all_i));
 
-        Q_kj_nsc = x_all_i(1:2:end); % +1 because first point is the mesh beginning
+        Q_kj_nsc = x_all_i(1:2:end);
         Qdot_kj_nsc = x_all_i(2:2:end);
         
         % --- compute: lMT (muscle-tendon length), d_lMT/dt, MA(moment arm)
@@ -620,14 +631,14 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
 
 
         % Torque actuator activation dynamics (explicit formulation)   
-        da_dt_i = activation_dynamics_function(e_ak, a_akj(:, i+1));
+        da_dt_i = activation_dynamics_function(e_ak, a_akj(:, i + 1));
         eq_constr{end+1} = (mesh_T * da_dt_i - a_a_dot)./scaling.a_a;
 
         % Computed torque from CasADi should be equal to the net moments
         % coming out of the OpenSim model. We do this only for the DoFs
         % that aren't spanned by the muscles.
         joint_moments_sf = scale_factors.("joint_moments");
-        eq_constr{end+1} = Ti(other_indices, 1)./joint_moments_sf - a_akj(:, i+1);
+        eq_constr{end+1} = Ti(independent_act_indices, 1)./joint_moments_sf - a_akj(:, i + 1);
 
         % Path constraints 
         % --------------------------------------------------------------- %
@@ -641,6 +652,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         pelvis_T = Ti(1:6, 1)./scale_factors.("pelvis_residuals");
 
         eq_constr{end+1} = pelvis_res_j(:, i) - pelvis_T;
+        %fprintf('eq_constr{end} size: %d x %d\n', eq_constr{end}.size1(), eq_constr{end}.size2());
         
         % loop through the DoFs spanned by the model muscles 
         for n = 1:size(dof_indices, 1)
@@ -668,12 +680,14 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
             M_computed = M_function(moment_arms, forces);
             
             % add difference to equality constraint
-            eq_constr{end+1} = Ti(idx, 1) - M_computed;            
+            eq_constr{end+1} = Ti(idx, 1) - M_computed;
+            %fprintf('eq_constr{end} size: %d x %d\n', eq_constr{end}.size1(), eq_constr{end}.size2());
         
         end
 
         % Contraction dynamics (implicit formulation)
         eq_constr{end+1} = hill_err_i;
+        %fprintf('eq_constr{end} size: %d x %d\n', eq_constr{end}.size1(), eq_constr{end}.size2());
 
         
         % --------------------------------------------------------------- %
@@ -693,6 +707,10 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     eq_constr = vertcat(eq_constr{:});
     ineq_constr1 = vertcat(ineq_constr1{:});
     ineq_constr2 = vertcat(ineq_constr2{:});
+
+    fprintf('final eq_constr size: %d x %d\n', eq_constr.size1(), eq_constr.size2());
+    fprintf('final ineq_constr1 size: %d x %d\n', ineq_constr1.size1(), ineq_constr1.size2());
+    fprintf('final ineq_constr2 size: %d x %d\n', ineq_constr2.size2(), ineq_constr2.size2());
 
     % Now we define a CasADi function that takes in the design variables at
     % the collocation points and outputs the cost function (J) and the sets
@@ -732,6 +750,16 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     opti.subject_to(eq_constr_all == 0);
     opti.subject_to(ineq_constr1_all(:) >= 0);
     opti.subject_to(ineq_constr2_all(:) <= 1/tact);
+
+    lbg = opti.value(opti.lbg);
+    ubg = opti.value(opti.ubg);
+    n_eq   = sum(lbg == ubg);
+    n_ineq = sum(lbg ~= ubg);
+    
+    fprintf('Equality constraints  : %d\n', n_eq);
+    fprintf('Inequality constraints: %d\n', n_ineq);
+    fprintf('Decision variables    : %d\n', opti.nx);
+    fprintf('DOF                   : %d\n', opti.nx - n_eq);
     
     % --------------------------------------------------------------- %
     %                       mesh end points                           %
@@ -764,6 +792,13 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         % update collocation indices
         col_indices = col_indices + 3;
     end
+
+    lbg = opti.value(opti.lbg);
+    ubg = opti.value(opti.ubg);
+    n_eq   = sum(lbg == ubg);
+    n_ineq = sum(lbg ~= ubg);
+    fprintf('Equality constraints  : %d\n', n_eq);
+    fprintf('Inequality constraints: %d\n', n_ineq);
     
     % sum objective function over all mesh segments
     J_sum = sum(J_all);
@@ -784,6 +819,6 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     % --------------------------------------------------------------- %
     %                          Solve problem                          %
     % --------------------------------------------------------------- %   
-    [w_opt,stats,g_opt] = solve_NLPSOL(opti,options);  
+    [w_opt,stats] = solve_NLPSOL(opti,options);  
 
 end
