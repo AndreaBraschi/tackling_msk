@@ -1,4 +1,4 @@
-from utils.vector_algebra import *
+from .vector_algebra import *
 from typing import Tuple
 
 # type hint imports

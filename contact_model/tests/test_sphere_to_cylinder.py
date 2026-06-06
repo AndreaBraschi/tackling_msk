@@ -1,10 +1,9 @@
+from osim_utils.read import readStoFile
+from ..utils.geometry import compute_effective_radius
+from ..utils.polynomials import fit_cubic, cubic
+from ..contact_forces.smooth_forces import *
 from numpy import sqrt as np_sqrt
 from numpy import ndarray, array, tanh, zeros, ones, linspace, float64
-from contact_model.contact_forces.smooth_forces import smooth_hunt_crossley
-from osim_utils.read import readStoFile
-from contact_model.contact_forces.contact_forces import *
-from utils.geometry import compute_effective_radius
-from utils.polynomials import fit_cubic, cubic, quadratic
 import matplotlib.pyplot as plt
 
 
@@ -21,7 +20,7 @@ cylinder_bottom_arr: ndarray = cylinder_top_arr * (-1)
 sphere_r: float = 0.025
 
 # define contact model parameters
-k: float = 2300832.0
+k: float = 1000000.0
 c: float = 2.5
 
 # pre-allocate force array
@@ -46,7 +45,7 @@ axes[1].set_title('rate of change')
 fig.tight_layout()
 plt.show()
 
-b: float = 350
+b: float = 50
 bc: ndarray = b * x
 tanh_bc: ndarray = tanh(bc)
 

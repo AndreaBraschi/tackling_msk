@@ -1,9 +1,9 @@
-from utils.vector_algebra import unit_vector, dot_product
-from utils.geometry import find_point_projection_along_a_line, get_distance_between_edges
+from .utils.vector_algebra import unit_vector, dot_product
+from .utils.geometry import find_point_projection_along_a_line, get_distance_between_edges
 
 # type hint imports
 from numpy import ndarray
-from opensim import Model, State, Body, Frame, Marker, Vec3, Ground
+from opensim import Model, State, Body, Frame, Vec3, Ground
 
 def compute_x_and_x_dot(model: Model, s: State, clavicle: Body, sphere_r: float, sphere_loc: ndarray,
                         cylinder_r: float, cylinder_top: ndarray, cylinder_bottom: ndarray, cylinder_vel: ndarray):
