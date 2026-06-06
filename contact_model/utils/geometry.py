@@ -68,37 +68,10 @@ def get_distance_between_edges(Q: ndarray, sphere_com: ndarray, radius_sphere: f
     # directional vector that points from sphere_com at Q
     r_hat_: ndarray = r_hat * (-1)
 
-    # here we have handle the 2 following cases
-    # 1) when the sphere centre of mass hasn't gone over the cylinder edge: in this case we have the cylinder horizontal
-    #    motion direction vector that is pointing in the same direction as the unit vector that points towards the sphere
-    #    CoM
-    if motion_direction[0] * r_hat[0] > 0:
 
-        if motion_direction[0] > 0:
-            cylinder_edge: ndarray = Q + (radius_cylinder * r_hat * (-1))
-            sphere_edge: ndarray = sphere_com + (radius_sphere * r_hat_ * (-1))
-            sphere_direction: ndarray = r_hat * (-1)
-
-        else:
-            cylinder_edge: ndarray = Q + (radius_cylinder * r_hat)
-            sphere_edge: ndarray = sphere_com + (radius_sphere * r_hat_)
-            sphere_direction: ndarray = r_hat
-
-
-    # 2) when the sphere centre of mass has gone over the cylinder edge: in this case we have the cylinder horizontal
-    #    motion direction vector that is pointing in the opposite direction as the unit vector that points towards the
-    #    sphere CoM.
-    else:
-
-        if motion_direction[0] > 0:
-            cylinder_edge: ndarray = Q + (radius_cylinder * r_hat)
-            sphere_edge: ndarray = sphere_com + (radius_sphere * r_hat_)
-            sphere_direction: ndarray = r_hat
-
-        else:
-            cylinder_edge: ndarray = Q + (radius_cylinder * r_hat * (-1))
-            sphere_edge: ndarray = sphere_com + (radius_sphere * r_hat_ * (-1))
-            sphere_direction: ndarray = r_hat * (-1)
+    cylinder_edge: ndarray = Q + (radius_cylinder * r_hat)
+    sphere_edge: ndarray = sphere_com + (radius_sphere * r_hat_)
+    sphere_direction: ndarray = r_hat
 
 
     # distance vector (3 x 1) between the 2 edges.
