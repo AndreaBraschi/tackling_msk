@@ -1,4 +1,5 @@
-function guess = getGuess(Qs, independent_coord_idx, time_mesh, time_col, num_q, num_muscles, num_actuators, scaling)
+function guess = getGuess(Qs, independent_coord_idx, time_mesh, time_col, ...
+    num_q, num_muscles, num_actuators, scaling, pelvis_y_idx, scaling_factor)
 % --------------------------------------------------------------------------
 % getGuess
 %   This function creates an inital guess for the design variables directly
@@ -101,6 +102,12 @@ Qdotdots_spline = (Qdotdots_spline)./scaling.Qsdotdot;
 Qs_spline_col = (Qs_spline_col)./scaling.Qs;
 Qdots_spline_col = (Qdots_spline_col)./scaling.Qsdot;
 Qdotdots_spline_col = (Qdotdots_spline_col)./scaling.Qsdotdot;
+
+
+% increase a little bit the pelvis Y values
+Qs_spline(:, pelvis_y_idx) = Qs_spline(:, pelvis_y_idx) + Qs_spline(:, pelvis_y_idx) * scaling_factor;
+Qs_spline_col(:, pelvis_y_idx) = Qs_spline_col(:, pelvis_y_idx) + Qs_spline_col(:, pelvis_y_idx) * scaling_factor;
+
 
 % add the splined Q, Qdot and Qdotdot to a 'guess' struct
 
