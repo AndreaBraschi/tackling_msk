@@ -15,10 +15,8 @@ function Qs = readMotQs(filepath, cutoff)
         filepath
         cutoff = []   % default to empty if not passed
     end    
-    
-
+   
     Qs = importdata(filepath);
-
     Qs.time = Qs.data(:, 1);
     translational_tags = {'tx', 'ty', 'tz'};
     
@@ -35,7 +33,7 @@ function Qs = readMotQs(filepath, cutoff)
     % Low-pass filter only if the user has passed a 'yes' as input
     if ~isempty(cutoff)
         order = 2;
-        fs = 1 / mean(diff(Qs.data(:, 1)));
+        fs = 1 / mean(diff(Qs.time));
         [a, b] = butter(order/2, cutoff./(0.5*fs), 'low');
         Qs.allfilt = Qs.data;
         Qs.allfilt(:, 2:end) = filtfilt(a, b, Qs.allfilt(:, 2:end));
