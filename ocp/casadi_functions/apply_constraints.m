@@ -49,16 +49,12 @@ for i = 1:num_constraints
     
     dependent_coord_name = config_struct.(constraint_name).("dependent_coordinate");
     independent_coord_name = config_struct.(constraint_name).("independent_coordinate");
-    fprintf('q ind name: %s\n', independent_coord_name);
-    fprintf('q dep name: %s\n', dependent_coord_name);
-    
+
     coupling_type = config_struct.(constraint_name).("coupling");
 
     independent_coord_idx_all = find(strcmp(q_all_list, independent_coord_name));
     dependent_coord_idx_all = find(strcmp(q_all_list, dependent_coord_name));
-    fprintf('q ind idx: %i\n', independent_coord_idx_all);
-    fprintf('q dep idx: %i\n', dependent_coord_idx_all);
-    
+
     independent_coord_pos = q_all(independent_coord_idx_all);
     independent_coord_vel = q_dot_all(independent_coord_idx_all);
     independent_coord_acc = acc_all(independent_coord_idx_all);
