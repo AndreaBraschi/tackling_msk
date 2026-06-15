@@ -1,4 +1,4 @@
-function res = track_sim(trial_id, trial_dir, dll_filepath)
+function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
 
 % --------------------------------------------------------------------------
 % track_sim
@@ -70,7 +70,11 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     pathOpt = [pwd,'/opt'];
     addpath(genpath(pathOpt));
     
+    pathEval = [pwd,'/evaluate'];
+    addpath(genpath(pathEval));
+    
    
+
     % Collocation scheme
     N = config_struct.("collocation").("number_of_segments");   % number of mesh intervals
     d = config_struct.("collocation").("num_points"); % number of collocation points per mesh interval
@@ -108,7 +112,9 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
 
 
 
-    % ------------------------ Experimental Data ------------------------ % 
+    % ------------------------ Experimental Data ------------------------ %
+    % read experimental qs indices values
+    pelvis_y_idx = config_struct.("experimental_q_indices").("pelvis_y");
     
     % ------ IK ------ %
     ik_filepath = fullfile(trial_dir, "/ik/", trial_id + "_ik.mot");
@@ -119,6 +125,9 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     % read from config structure the names of the DoFs that are spanned by
     % the muscles.
     dof_names = config_struct.("dof_names_spanned_by_muscles");
+
+    % number of DoFs that are spanned by the muscles.
+    num_dofs = size(dof_names, 2);
     
     % find which indices of Qs correspond to the DoFs that are spanned by
     % the neck muscles.
@@ -134,6 +143,8 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     % find dependent coordinates indices
     dependent_coord_idx = cellfun(@(name) find(strcmp(q_names, name)), dependent_coord_names);
 
+    dependent_coord_names_check = q_names(dependent_coord_idx);
+
     % independent coordinates indices
     independent_coord_idx = setdiff(dof_indices_all, dependent_coord_idx);
     independent_coord_names = q_names(independent_coord_idx);
@@ -143,7 +154,8 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     % by muscles as "number of actuators". This simply means that the force
     % actuator for these coordinates is modelled as an idealised actuator, 
     % and it doesn't have all the inherent complexity of a muscle.
-    independent_act_indices = setdiff(other_indices, independent_coord_idx);
+    independent_act_indices = setdiff(other_indices, dependent_coord_idx');
+    independent_act_names = q_names(independent_act_indices);
     num_actuators = size(independent_act_indices, 2);
     
     
@@ -206,6 +218,9 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
 
     % import scaled factors
     scale_factors = config_struct.("scale_factors");
+    joint_moments_sf = scale_factors.("joint_moments");
+    pelvis_res_sf = scale_factors.("pelvis_residuals");
+    pelvis_y = scale_factors.("pelvis_y");
 
     % ----------------------------- Bounds  ----------------------------- %
     [bounds, scaling] = getBounds(Qs, independent_coord_idx, GRFs, ...
@@ -215,7 +230,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     
     % -------------------------- Initial Guess  ------------------------- %
     guess = getGuess(Qs, independent_coord_idx, time_intervals, time_grid, ...
-        num_q_all, num_muscles, num_actuators, scaling);
+        num_q_all, num_muscles, num_actuators, scaling, pelvis_y_idx, pelvis_y);
     
     
     % ------------------- Experimental Data Scaling  ------------------- %
@@ -223,6 +238,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     % q
     Qs_scaled_all = guess.Qs_all(:, 1:2:end);
     Qs_scaled_col_all = guess.Qs_col(:, 1:2:end);
+        
     % retrieve just independent coordinates
     Qs_scaled = Qs_scaled_all(:, independent_coord_idx);
     Qs_scaled_col = Qs_scaled_col_all(:, independent_coord_idx);
@@ -326,7 +342,7 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     opti.set_initial(a_a, guess.a_a');  
 
 
-    fprintf('number of states   : %d\n', num_q_ind * 2 + num_actuators + num_muscles * 2);
+    fprintf('number of states   : %d\n', num_q_ind * 2 + num_actuators * 2 + num_muscles * 2);
 
     % ----------------------- Controls  ----------------------- %
     % ----- Muscles ----- %
@@ -356,13 +372,13 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     opti.subject_to(bounds.Qsdotdot.lower_ind' < A_col < bounds.Qsdotdot.upper_ind');
     opti.set_initial(A_col, guess.Qdotdots_col_ind'); 
 
-    fprintf('number of controls : %d\n', num_muscles + num_actuators + num_q_ind);
+    fprintf('number of controls : %d\n', num_muscles * 2 + num_actuators + num_q_ind);
 
     % ----------------------- Residuals  ----------------------- %
     % pelvis
     pelvis_res_col = opti.variable(num_body_dof, d * N);
     opti.subject_to(bounds.pelvis_res.lower'< pelvis_res_col < bounds.pelvis_res.upper');
-    opti.set_initial(pelvis_res_col, zeros(num_body_dof, N * d));
+    opti.set_initial(pelvis_res_col, zeros(num_body_dof, N * d) + 0.25);
 
 
     fprintf('Decision variables : %d\n', opti.nx);
@@ -503,6 +519,11 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     % Pelvis residuals
     J_pelvis = sum_of_squares('pelvis', num_body_dof);
 
+    % --------------- evaluation function ---------------------%
+    f_dll = evaluate_dll(F, num_q_all * 2, num_q_all);
+    f_eq_constr = eval_eq_constr(F, num_q_all, num_q_ind, num_actuators, ...
+        independent_act_indices, num_muscles, num_body_dof, joint_moments_sf, pelvis_res_sf);
+
     
     % --- joint moments --- %
     
@@ -533,6 +554,19 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     % Read the weights of the cost function from config file
     W = config_struct.("W");
     
+    % ------------------------------------------------------------------- %
+    % Preparae accumulators for what we want to numerically evaluate after
+    % optimisation:
+
+    % cost function
+    J = MX.zeros(1, 1);
+
+    % equality constraints
+    eq_constr_eval = MX.zeros(8, d);
+    num_eval_grfs = size(num_q_all + dll_grf_indices(1):num_q_all + dll_grm_indices(1), 2);
+    GRF_eval = MX.zeros(num_eval_grfs, d);
+    pelvis_res_eval = MX.zeros(num_q_all, d);
+    
     % for one segment:
     % loop through the collocation points
     for i = 1:d 
@@ -541,63 +575,70 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         x_i = Xkj_nsc(:, i + 1);
 
         % current q accelerations
-        acc_i = Aj(:, i);
+        acc_i = Aj_nsc(:, i);
 
         [x_all_i, acc_all_i] = apply_constraints(x_i, acc_i, q_names, independent_coord_idx);
 
         % evaluate external function
         Ti = F(vertcat(x_all_i, acc_all_i));
+        
+        T_eval = f_dll(x_all_i, acc_all_i);
+        GRF_eval(:, i) = T_eval(num_q_all + dll_grf_indices(1):num_q_all + dll_grm_indices(1), 1);
+        pelvis_res_eval(:, i) = T_eval(1:num_q_all, 1);
 
-        Q_kj_nsc = x_all_i(1:2:end);
-        Qdot_kj_nsc = x_all_i(2:2:end);
+
+        Q_i_nsc = x_all_i(1:2:end);
+        Qdot_i_nsc = x_all_i(2:2:end);
         
         % --- compute: lMT (muscle-tendon length), d_lMT/dt, MA(moment arm)
         
         % isolate DoFs that are spanned by muscles and their time derivatives        
-        dof_i = Q_kj_nsc(dof_indices);  
-        dof_dot_i = Qdot_kj_nsc(dof_indices);
+        dof_i = Q_i_nsc(dof_indices);  
+        dof_dot_i = Qdot_i_nsc(dof_indices);
 
         [lMT_i, vMT_i, dM_i] = f_muscle(dof_i, dof_dot_i);
 
         % Get muscle-tendon forces and derive Hill-equilibrium 
         [hill_err_i, FT_i, ~, ~, ~] = force_equilibrium(akj(:, i + 1), ...
-            FTtildekj_nsc(:, i+1), dFTtildej_nsc(:, i), lMT_i, vMT_i);
+            FTtildekj_nsc(:, i + 1), dFTtildej_nsc(:, i), lMT_i, vMT_i);
         
         % ---------------- Cost Function Terms ---------------- %
         % Q
-        q_diff = Q_kj_nsc(independent_coord_idx) - Qs_track_kj(:, i + 1);
+        q_diff = Xkj(1:2:end, i + 1) - Qs_track_kj(:, i + 1);
         q_term = W.q * B(i + 1) * J_q(q_diff) * mesh_T;
 
         % Q dot
-        q_dot_diff = Qdot_kj_nsc(independent_coord_idx) - Qdots_track_kj(:, i + 1);
+        q_dot_diff = Xkj(2:2:end, i + 1) - Qdots_track_kj(:, i + 1);
         q_dot_term = W.q_dot * B(i + 1) * J_q_dot(q_dot_diff) * mesh_T;
 
         % GRF
         Ti_GRF_scaled = Ti(num_q_all + dll_grf_indices, 1)./scaling.GRF';
-        GRF_term = W.GRF * B(i + 1) * (J_GRF(Ti_GRF_scaled - GRF_track_kj(:, i + 1))) * mesh_T;
+        GRF_diff = Ti_GRF_scaled - GRF_track_kj(:, i + 1);
+        GRF_term = W.GRF * B(i + 1) * J_GRF(GRF_diff) * mesh_T;
 
         % GRM
         Ti_GRM_scaled = Ti(num_q_all + dll_grm_indices, 1)./scaling.GRM';
-        GRM_term = W.GRM * B(i + 1) * (J_GRM(Ti_GRM_scaled - GRM_track_kj(:, i + 1))) * mesh_T;
+        GRM_diff = Ti_GRM_scaled - GRM_track_kj(:, i + 1);
+        GRM_term = W.GRM * B(i + 1) * J_GRM(GRM_diff) * mesh_T;
 
         % muscle activation
         act_term = W.a * B(i + 1) * (J_muscles_act(akj(:, i + 1))) * mesh_T;
 
         % muscle activation time derivative
-        act_der_term = W.vA * B(i + 1) * (J_muscles_act_der(vAk) * mesh_T);
+        act_der_term = W.vA * B(i + 1) * J_muscles_act_der(vAk) * mesh_T;
 
         % Q dot dot: Accelerations
-        q_dot_dot_term = W.acc * B(i + 1) * (J_q_dot_dot(acc_i) * mesh_T);
+        q_dot_dot_term = W.acc * B(i + 1) * J_q_dot_dot(acc_i) * mesh_T;
 
         % derivative of MT force
-        dMTf_dt_term = B(i + 1) * (J_MT_unit(dFTtildej(:, i)) * mesh_T);
+        dMTf_dt_term = W.u * B(i + 1) * J_MT_unit(dFTtildej(:, i)) * mesh_T;
 
         % pelvis residual term
-        pelvis_term = W.pelvis * B(i + 1) * (J_pelvis(pelvis_res_j(:, i)) * mesh_T);
+        pelvis_term = W.pelvis * B(i + 1) * J_pelvis(pelvis_res_j(:, i)) * mesh_T;
         
         
         % ------------ add them up ----------- %
-        J = q_term + q_dot_term + q_dot_dot_term + GRF_term + GRM_term + ...
+        J = J + q_term + q_dot_term + q_dot_dot_term + GRF_term + GRM_term + ...
             act_term + act_der_term + dMTf_dt_term + pelvis_term;
         
         
@@ -608,21 +649,25 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         % derivative approximation at the collocation points of the
         % segment.
 
-        Q_nsc_dot  = Xkj_nsc(1:2:end, :) * C(:, i + 1);  % [num_q, d + 1] @ [d+1, 1] -> [num_q, d]
-        Qdots_nsc_dot  = Xkj_nsc(2:2:end, :) * C(:, i + 1);  % [num_q, 1] @ [d + 1, 1] -> [num_q, d]          
+        Q_nsc_dot  = Xkj_nsc(1:2:end, :) * C(:, i + 1);  % [num_q, d + 1] @ [d+1, 1] -> [num_q, 1]
+        Qdots_nsc_dot  = Xkj_nsc(2:2:end, :) * C(:, i + 1);  % [num_q, 1] @ [d + 1, 1] -> [num_q, 1]          
         
-        FTtilde_nsc_dot  = FTtildekj_nsc * C(:, i + 1);% [num_q, d + 1] @ [d+1, 1] -> [num_q, d]
+        FTtilde_nsc_dot  = FTtildekj_nsc * C(:, i + 1);% [num_q, d + 1] @ [d+1, 1] -> [num_q, 1]
    
-        a_dot  = akj * C(:, i + 1); % [num_muscle, d + 1] @ [d+1, 1] -> [num_muscles, d]
+        a_dot  = akj * C(:, i + 1); % [num_muscle, d + 1] @ [d+1, 1] -> [num_muscles, 1]
         
-        a_a_dot  = a_akj * C(:, i + 1); % [num_actuators, d + 1] @ [d+1, 1] -> [num_actuators, d]
+        a_a_dot  = a_akj * C(:, i + 1); % [num_actuators, d + 1] @ [d+1, 1] -> [num_actuators, 1]
          
         
         % Muscle activation time derivative
         eq_constr{end+1} = (mesh_T * vAk_nsc - a_dot)./scaling.a;
+        muscle_act_der = (mesh_T * vAk_nsc)./scaling.a;
+        muscle_act_der_computed = (a_dot)./scaling.a;
         
         % Contraction dynamics (implicit formulation)     
         eq_constr{end+1} = (mesh_T * dFTtildej_nsc(:, i) - FTtilde_nsc_dot)./scaling.FTtilde';
+        contraction_der = (mesh_T * dFTtildej_nsc(:, i))./scaling.FTtilde';
+        contraction_der_computed = (FTtilde_nsc_dot)./scaling.FTtilde';
         
         % Skeleton dynamics (implicit formulation)               
         Qdotj_nsc = Xkj_nsc(2:2:end, i + 1); % velocity
@@ -630,15 +675,28 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         eq_constr{end+1} = (mesh_T * Aj_nsc(:, i) - Qdots_nsc_dot)./scaling.Qsdot(:, independent_coord_idx)';
 
 
+        vel = (mesh_T * Qdotj_nsc)./scaling.Qs(:, independent_coord_idx)';
+        vel_computed = Q_nsc_dot./scaling.Qs(:, independent_coord_idx)';
+        acc = (mesh_T * Aj_nsc(:, i))./scaling.Qsdot(:, independent_coord_idx)';
+        acc_computed = Qdots_nsc_dot./scaling.Qsdot(:, independent_coord_idx)';
+
+
         % Torque actuator activation dynamics (explicit formulation)   
         da_dt_i = activation_dynamics_function(e_ak, a_akj(:, i + 1));
-        eq_constr{end+1} = (mesh_T * da_dt_i - a_a_dot)./scaling.a_a;
+        eq_constr{end+1} = (mesh_T * da_dt_i - a_a_dot);
+
+        act_moment_der = (mesh_T * da_dt_i);
+        act_moment_der_computed = (a_a_dot);
 
         % Computed torque from CasADi should be equal to the net moments
         % coming out of the OpenSim model. We do this only for the DoFs
         % that aren't spanned by the muscles.
-        joint_moments_sf = scale_factors.("joint_moments");
-        eq_constr{end+1} = Ti(independent_act_indices, 1)./joint_moments_sf - a_akj(:, i + 1);
+        Ti_moments = Ti(independent_act_indices, 1);
+        Ti_moments_scaled = MX.zeros(size(Ti_moments));
+        Ti_moments_scaled(1:end-5) = Ti_moments(1:end-5, 1)./joint_moments_sf;
+        Ti_moments_scaled(end-5:end) = Ti_moments(end-5:end, 1)./pelvis_res_sf;
+        eq_constr{end+1} = Ti_moments_scaled - a_akj(:, i + 1);
+        
 
         % Path constraints 
         % --------------------------------------------------------------- %
@@ -649,10 +707,8 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         % ----- pelvis ----- %
         % here, we need to scale the pelvis residuals coming out of the
         % external function
-        pelvis_T = Ti(1:6, 1)./scale_factors.("pelvis_residuals");
-
+        pelvis_T = Ti(1:6, 1)./pelvis_res_sf;
         eq_constr{end+1} = pelvis_res_j(:, i) - pelvis_T;
-        %fprintf('eq_constr{end} size: %d x %d\n', eq_constr{end}.size1(), eq_constr{end}.size2());
         
         % loop through the DoFs spanned by the model muscles 
         for n = 1:size(dof_indices, 1)
@@ -680,24 +736,42 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
             M_computed = M_function(moment_arms, forces);
             
             % add difference to equality constraint
-            eq_constr{end+1} = Ti(idx, 1) - M_computed;
-            %fprintf('eq_constr{end} size: %d x %d\n', eq_constr{end}.size1(), eq_constr{end}.size2());
-        
+            eq_constr{end+1} = (Ti(idx, 1) - M_computed)./joint_moments_sf;
+
         end
+
 
         % Contraction dynamics (implicit formulation)
         eq_constr{end+1} = hill_err_i;
-        %fprintf('eq_constr{end} size: %d x %d\n', eq_constr{end}.size1(), eq_constr{end}.size2());
-
         
+
+        [vel_diff_i, acc_diff_i, act_moment_diff_i, ...
+            act_moment_der_diff_i, pelvis_res_diff_i, muscle_act_der_diff_i, ...
+            contraction_der_diff_i, hill_diff_i] = f_eq_constr( ...
+            x_all_i, acc_all_i, vel, vel_computed, acc, acc_computed, ...
+            a_akj(:, i + 1), act_moment_der, act_moment_der_computed, ...
+            muscle_act_der, muscle_act_der_computed, pelvis_res_j(:, i), ...
+            contraction_der, contraction_der_computed, hill_err_i);
+
+        eq_constr_eval(1, i) = vel_diff_i;
+        eq_constr_eval(2, i) = acc_diff_i;
+        eq_constr_eval(3, i) = act_moment_diff_i;
+        eq_constr_eval(4, i) = act_moment_der_diff_i;
+        eq_constr_eval(5, i) = pelvis_res_diff_i;
+        eq_constr_eval(6, i) = muscle_act_der_diff_i;
+        eq_constr_eval(7, i) = contraction_der_diff_i;
+        eq_constr_eval(8, i) = hill_diff_i;
+
+
+
         % --------------------------------------------------------------- %
         %                      Inequality constraints                     %
         % --------------------------------------------------------------- %
         % Activation dynamics (implicit formulation)   
         tact = 0.015;
         tdeact = 0.06;
-        act1 = vAk_nsc + akj(:, i + 1)./(ones(size(akj(:, i + 1),1),1) * tdeact);
-        act2 = vAk_nsc + ak./(ones(size(ak,1),1)*tact);
+        act1 = vAk + akj(:, i + 1)./(ones(size(akj(:, i + 1),1),1) * tdeact);
+        act2 = vAk + ak./(ones(size(ak,1),1)*tact);
         ineq_constr1{end+1} = act1;
         ineq_constr2{end+1} = act2; 
         
@@ -725,7 +799,10 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         GRF_track_j, ...
         GRM_track_j, ...
         pelvis_res_j},...
-        {eq_constr, ineq_constr1, ineq_constr2, J});
+        {eq_constr, ineq_constr1, ineq_constr2, ...
+        J, q_term, q_dot_term, ...
+        q_dot_dot_term, GRF_term, GRM_term, act_term, act_der_term, ...
+        dMTf_dt_term, pelvis_term});
 
     % register function as parallel form across the number of segments of
     % the trajectory.
@@ -733,7 +810,10 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
 
 
     % finally, we evaluate everything that was built symbolically
-    [eq_constr_all, ineq_constr1_all, ineq_constr2_all, J_all] = f_coll_map( ...
+    [eq_constr_all, ineq_constr1_all, ineq_constr2_all, J_all, q_term_all,...
+        q_dot_term_all, q_dot_dot_term_all, GRF_term_all, GRM_term_all, ...
+            act_term_all, act_der_term_all, dMTf_dt_term_all, pelvis_term_all, ...
+           ] = f_coll_map( ...
         X(:, 1:end-1), X_col, A_col, ...
         a(:, 1:end-1), a_col, vA(:, 1:end-1),...
         FTtilde(:, 1:end-1), FTtilde_col, dFTtilde_col, ...
@@ -744,6 +824,33 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
         GRF_scaled',...
         GRM_scaled', ...
         pelvis_res_col);
+
+
+    % ------------------------------------------------------------------- %
+    %                     External Function evaluation
+    % ------------------------------------------------------------------- %
+    func_dll = Function('f_dll', {Xk, Xj, Aj}, {GRF_eval, pelvis_res_eval});
+    f_dll_map = func_dll.map(N, parallelMode, num_threads);
+
+    % numerical results
+    [GRF_eval_all, pelvis_res_eval_all] = f_dll_map(X(:, 1:end-1), X_col, A_col);
+    % ------------------------------------------------------------------- %
+
+
+    
+    % ------------------------------------------------------------------- %
+    %                  equality constraints evaluation
+    % ------------------------------------------------------------------- %
+    func_eq_constr = Function('func_eq_constr', {Xk, Xj, Aj, a_ak, a_aj, e_ak, ak, aj, vAk, pelvis_res_j, FTtildek, FTtildej, dFTtildej}, ...
+        {eq_constr_eval});
+    
+    func_eq_constr_map = func_eq_constr.map(N, parallelMode, num_threads);
+
+    % numerical results
+    eq_constr_eval_all = func_eq_constr_map(X(:, 1:end-1), X_col, A_col, ...
+        a_a(:, 1:end-1), a_a_col, e_a(:, 1:end-1), a(:, 1:end-1), a_col, ...
+        vA(:, 1:end-1), pelvis_res_col, FTtilde(:, 1:end-1), FTtilde_col, dFTtilde_col);
+    % ------------------------------------------------------------------- %
 
 
     % add constraints to opti struct
@@ -809,16 +916,24 @@ function res = track_sim(trial_id, trial_dir, dll_filepath)
     opti.minimize(J_sum);
     options.ipopt.hessian_approximation = 'limited-memory';
     options.ipopt.mu_strategy  = 'adaptive';
-    options.ipopt.max_iter = 10000;
+    options.ipopt.max_iter = config_struct.("optimiser").("max_iters");
     tolerance = config_struct.("optimiser").("tolerance");
     options.ipopt.tol = 1*10^(-tolerance);
     options.ipopt.print_timing_statistics='yes';
     opti.solver('ipopt', options);  
     
+
+    [GRFs_num, pelvis_res_num, eq_constr_num] = evaluate_guess(opti, J_all, q_term_all, q_dot_term_all, q_dot_dot_term_all, ...
+   GRF_term_all, GRM_term_all, act_term_all, act_der_term_all, ...
+   dMTf_dt_term_all, pelvis_term_all, GRF_eval_all, pelvis_res_eval_all, eq_constr_eval_all);
+
+
+
     
     % --------------------------------------------------------------- %
     %                          Solve problem                          %
     % --------------------------------------------------------------- %   
-    [w_opt,stats] = solve_NLPSOL(opti,options);  
+    [w_opt,stats] = solve_NLPSOL(opti, options);  
+
 
 end
