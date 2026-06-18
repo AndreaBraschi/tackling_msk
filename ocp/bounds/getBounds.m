@@ -208,6 +208,15 @@ bounds.pelvis_res.lower = (bounds.pelvis_res.lower)./scaling.pelvis_res;
 bounds.pelvis_res.upper = (bounds.pelvis_res.upper)./scaling.pelvis_res;
 
 
+pb_sf = scale_factors.("punching_bag");
+bounds.pb_res.lower = -pb_sf * ones(1, 3);
+bounds.pb_res.upper =  pb_sf * ones(1, 3);
+
+scaling.pb_res  = max(abs(bounds.pb_res.lower), abs(bounds.pb_res.upper)); 
+bounds.pb_res.lower = (bounds.pb_res.lower)./scaling.pb_res;
+bounds.pb_res.upper = (bounds.pb_res.upper)./scaling.pb_res;
+
+
 % -------------------------- Validate struct -------------------------- %
 validate_bounds(bounds);
 
