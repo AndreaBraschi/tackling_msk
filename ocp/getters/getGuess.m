@@ -179,7 +179,7 @@ guess.dFTtilde_col = (dFTtilde_col)./scaling.dFTtilde;
 % Torque actuators
 guess.a_a = 0.1 * ones(T_mesh, num_actuators);
 guess.e_a = 0.1 * ones(T_mesh, num_actuators);
-guess.a_a_col= 0.01 * ones(T_col, num_actuators);
+guess.a_a_col = 0.1 * ones(T_col, num_actuators);
 
 % look for invalid numerical values
 validate_guess(guess);
