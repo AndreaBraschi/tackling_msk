@@ -54,13 +54,23 @@
     "lGRM": [5, 6, 7]
     },
 
+    "experimental_q_indices": {
+        "pelvis_x": 4,
+        "pelvis_y": 5,
+        "pelvis_z": 6
+    },
+
     "scale_factors": {
-    "pelvis_residuals": 400,
-    "joint_moments": 350
+    "pelvis_residuals": 600,
+    "punching_bag": 1000,
+    "joint_moments": 350,
+    "pelvis_y": 0.1
     },
 
 
     "optimiser": {
-    "tolerance": 4
+        "tolerance": 3,
+        "max_iters": 5000
+
     }
 }
