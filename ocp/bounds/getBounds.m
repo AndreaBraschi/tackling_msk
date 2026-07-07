@@ -45,7 +45,7 @@ end
 for i = 1:num_q
     if max(y(i).pos) == 0 || min(y(i).pos) == 0
         Qs.upper(i) = 1;
-        Qs.lower(i) = 1;
+        Qs.lower(i) = -1;
 
     else
         Qs.upper(i) = max(y(i).pos); 
@@ -65,7 +65,7 @@ Qs.upper_ind = Qs.upper(:, independent_coord_idx);
 for i = 1:num_q    
     if max(y(i).vel) == 0 || min(y(i).vel) == 0
         Qsdot.upper(i) = 1;
-        Qsdot.lower(i) = 1;
+        Qsdot.lower(i) = -1;
 
     else
         Qsdot.upper(i) = max(y(i).vel); 
@@ -86,7 +86,7 @@ Qsdot.upper_ind = Qsdot.upper(:, independent_coord_idx');
 for i = 1:num_q
     if max(y(i).acc) == 0 || min(y(i).acc) == 0
         bounds.Qsdotdot.upper(i) = 1;
-        bounds.Qsdotdot.lower(i) = 1;
+        bounds.Qsdotdot.lower(i) = -1;
 
     else
         bounds.Qsdotdot.upper(i) = max(y(i).acc);
