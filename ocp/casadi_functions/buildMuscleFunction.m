@@ -1,7 +1,7 @@
 function f_muscle = buildMuscleFunction(pathMusclePoly)
 
 import casadi.*
-muscle_spanning_joint_file = fullfile(pathMusclePoly, "muscle_spanning_joints_info.mat");
+muscle_spanning_joint_file = fullfile(pathMusclePoly, "muscle_spanning_joints_info_modified.mat");
 muscle_spanning_joint_info = load(muscle_spanning_joint_file);
 
 MuscleInfo_file = fullfile(pathMusclePoly, "muscle_info_opt.mat");
