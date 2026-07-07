@@ -115,10 +115,21 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
     % ------------------------ Experimental Data ------------------------ %
     % read experimental qs indices values
     pelvis_y_idx = config_struct.("experimental_q_indices").("pelvis_y");
+
+    % import scaled factors
+    scale_factors = config_struct.("scale_factors");
+    joint_moments_sf = scale_factors.("joint_moments");
+    pelvis_res_sf = scale_factors.("pelvis_residuals");
+    pb_sf = scale_factors.("punching_bag");
+    pelvis_y = scale_factors.("pelvis_y");
+
     
     % ------ IK ------ %
     ik_filepath = fullfile(trial_dir, "/ik/", trial_id + "_ik.mot");
     Qs = readMotQs(ik_filepath, 20);
+    Qs.allfilt(:, pelvis_y_idx + 1) = Qs.allfilt(:, pelvis_y_idx + 1) + ...
+        Qs.allfilt(:, pelvis_y_idx + 1) * pelvis_y;
+
 
     dof_indices_all = 1:num_q_all;
 
@@ -157,6 +168,7 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
     independent_act_indices = setdiff(other_indices, dependent_coord_idx');
     independent_act_indices = [independent_act_indices(7:end-6), independent_act_indices(end-2:end)];
     %independent_act_indices = independent_act_indices(7:end-6);
+    
     independent_act_names = q_names(independent_act_indices);
     num_actuators = size(independent_act_indices, 2);
     
@@ -202,7 +214,6 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
     % find Qs values at each collocation point along the trajectory
     Qs.allinterpfilt_col = interp1(Qs.time, Qs.allfilt(:, 2:end), time_grid');
 
-
     % --- GRF --- %
     % find indices where the 2 items of time_opt are 
     dt_GRF = GRFs.time(2) - GRFs.time(1);
@@ -218,13 +229,6 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
     GRF_col = interp1(GRFs.time, GRFs.data(:, grf_indices), time_grid');
     GRM_col = interp1(GRFs.time, GRFs.data(:, grm_indices), time_grid');
 
-    % import scaled factors
-    scale_factors = config_struct.("scale_factors");
-    joint_moments_sf = scale_factors.("joint_moments");
-    pelvis_res_sf = scale_factors.("pelvis_residuals");
-    pb_sf = scale_factors.("punching_bag");
-    pelvis_y = scale_factors.("pelvis_y");
-
     % ----------------------------- Bounds  ----------------------------- %
     [bounds, scaling] = getBounds(Qs, independent_coord_idx, GRFs, ...
         num_q_all, num_muscles, num_actuators, grf_indices, grm_indices, ...
@@ -234,6 +238,29 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
     % -------------------------- Initial Guess  ------------------------- %
     guess = getGuess(Qs, independent_coord_idx, time_intervals, time_grid, ...
         num_q_all, num_muscles, num_actuators, scaling, pelvis_y_idx, pelvis_y);
+
+    % check whether initial guess are outside of the bounds
+    qs_guess = guess.Qs_all_ind;
+    qs_lower = bounds.X.lower;
+    qs_upper = bounds.X.upper;
+    interleaved = reshape(repmat(independent_coord_names, 2, 1), 1, []);
+    for n = 1:size(qs_guess, 2)
+        q_guess = qs_guess(:, n);
+        q_lower = qs_lower(:, n);
+        q_upper = qs_upper(:, n);
+        var_name = interleaved{n}; 
+
+        if any(q_guess > q_upper)
+            excess = max(q_guess - q_upper);
+            fprintf('Variable %s exceeds upper bound at n = %d by %.4f.\n', var_name, n, excess);
+
+        end
+        if any(q_guess < q_lower)
+            excess = max(q_lower - q_guess);
+            fprintf('Variable %s exceeds lower bound at n = %d by %.4f.\n', var_name, n, excess);
+        end
+
+    end
     
     
     % ------------------- Experimental Data Scaling  ------------------- %
@@ -544,16 +571,18 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
     % --- joint moments --- %
     
     % active elements
-    muscle_spanning_joint_file = fullfile(pathMusclePoly, "muscle_spanning_joints_info.mat");
+    muscle_spanning_joint_file = fullfile(pathMusclePoly, "muscle_spanning_joints_info_modified.mat");
     muscle_spanning_joint_info = load(muscle_spanning_joint_file);
     muscle_joint_info_fieldnames = fieldnames(muscle_spanning_joint_info);
     muscle_joint_info_field = muscle_joint_info_fieldnames{1};
 
     
     % loop through the DoFs spanned by the model muscles 
-    for n = 1:size(dof_indices, 1)
+    for n = 1:size(dof_names, 1)
         % find which muscles span the current DoF
         indices = find(muscle_spanning_joint_info.(muscle_joint_info_field)(:, n) == 1); 
+
+        % fprintf('Number of muscles: %d\n', size(indices, 1));
         
         % get number of muscles that span the current DoF
         dof_num_muscles = size(indices, 1);
@@ -576,6 +605,17 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
 
     % cost function
     J = MX.zeros(1, 1);
+    q_term = MX.zeros(1, 1);
+    q_dot_term = MX.zeros(1, 1);
+    GRF_term = MX.zeros(1, 1);
+    GRM_term = MX.zeros(1, 1);
+    act_term = MX.zeros(1, 1);
+    act_der_term = MX.zeros(1, 1);
+    q_dot_dot_term = MX.zeros(1, 1);
+    dMTf_dt_term = MX.zeros(1, 1);
+    pelvis_term = MX.zeros(1, 1);
+    pb_term = MX.zeros(1, 1);
+    
 
     % equality constraints
     eq_constr_eval = MX.zeros(8, d);
@@ -627,45 +667,45 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
         % ---------------- Cost Function Terms ---------------- %
         % Q
         q_diff = Xkj(1:2:end, i + 1) - Qs_track_kj(:, i + 1);
-        q_term = W.q * B(i + 1) * J_q(q_diff) * mesh_T;
+        q_term = q_term + W.q * B(i + 1) * J_q(q_diff) * mesh_T;
 
         % Q dot
         q_dot_diff = Xkj(2:2:end, i + 1) - Qdots_track_kj(:, i + 1);
-        q_dot_term = W.q_dot * B(i + 1) * J_q_dot(q_dot_diff) * mesh_T;
+        q_dot_term = q_dot_term + W.q_dot * B(i + 1) * J_q_dot(q_dot_diff) * mesh_T;
 
         % GRF
         Ti_GRF_scaled = Ti(num_q_all + dll_grf_indices, 1)./scaling.GRF';
         GRF_diff = Ti_GRF_scaled - GRF_track_kj(:, i + 1);
-        GRF_term = W.GRF * B(i + 1) * J_GRF(GRF_diff) * mesh_T;
+        GRF_term = GRF_term + W.GRF * B(i + 1) * J_GRF(GRF_diff) * mesh_T;
 
         % GRM
         Ti_GRM_scaled = Ti(num_q_all + dll_grm_indices, 1)./scaling.GRM';
         GRM_diff = Ti_GRM_scaled - GRM_track_kj(:, i + 1);
-        GRM_term = W.GRM * B(i + 1) * J_GRM(GRM_diff) * mesh_T;
+        GRM_term = GRM_term + W.GRM * B(i + 1) * J_GRM(GRM_diff) * mesh_T;
 
         % muscle activation
-        act_term = W.a * B(i + 1) * (J_muscles_act(akj(:, i + 1))) * mesh_T;
+        act_term = act_term + W.a * B(i + 1) * (J_muscles_act(akj(:, i + 1))) * mesh_T;
 
         % muscle activation time derivative
-        act_der_term = W.vA * B(i + 1) * J_muscles_act_der(vAk) * mesh_T;
+        act_der_term = act_der_term + W.vA * B(i + 1) * J_muscles_act_der(vAk) * mesh_T;
 
         % Q dot dot: Accelerations
-        q_dot_dot_term = W.acc * B(i + 1) * J_q_dot_dot(Aj(:, i)) * mesh_T;
+        q_dot_dot_term = q_dot_dot_term + W.acc * B(i + 1) * J_q_dot_dot(Aj(:, i)) * mesh_T;
 
         % derivative of MT force
-        dMTf_dt_term = W.u * B(i + 1) * J_MT_unit(dFTtildej(:, i)) * mesh_T;
+        dMTf_dt_term = dMTf_dt_term + W.u * B(i + 1) * J_MT_unit(dFTtildej(:, i)) * mesh_T;
 
         % pelvis residual term
-        pelvis_term = W.pelvis * B(i + 1) * J_pelvis(pelvis_res_j(:, i)) * mesh_T;
+        pelvis_term = pelvis_term + W.pelvis * B(i + 1) * J_pelvis(pelvis_res_j(:, i)) * mesh_T;
 
         % punching bag residual term
-        pb_term = W.pelvis * B(i + 1) * J_pb(pb_torque_j(:, i)) * mesh_T;
+        pb_term = pb_term + W.pelvis * B(i + 1) * J_pb(pb_torque_j(:, i)) * mesh_T;
         
         
         % ------------ add them up ----------- %
-        J = J + q_term + q_dot_term + q_dot_dot_term + GRF_term + GRM_term + ...
+        J = q_term + q_dot_term + q_dot_dot_term + GRF_term + GRM_term + ...
             act_term + act_der_term + dMTf_dt_term + pelvis_term + pb_term;
-        
+
         
         % --------------------------------------------------------------- %
         %                      Equality constraints                       %
@@ -740,7 +780,7 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
         eq_constr{end+1} = pb_torque_j(:, i) - pb_T;
         
         % loop through the DoFs spanned by the model muscles 
-        for n = 1:size(dof_indices, 1)
+        for n = 1:size(dof_names, 1)
             
             % find which muscles span the current DoF
             indices = find(muscle_spanning_joint_info.(muscle_joint_info_field)(:, n) == 1); 
@@ -748,7 +788,7 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
             % get DoF name
             dof_name = dof_names{n};
 
-
+ 
             % find the index of the DoF wrt the full list of coordinates
             idx = find(strcmp(q_names, dof_name));
 
@@ -968,9 +1008,10 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
     options.ipopt.tol = 1*10^(-tolerance);
     options.ipopt.print_timing_statistics='yes';
     options.ipopt.nlp_scaling_method = 'none';
+    options.ipopt.obj_scaling_factor = 1;
     opti.solver('ipopt', options);  
     
-
+   
     [GRFs_num, pelvis_res_num, eq_constr_num, mt_ft_num, mt_dm_num] = evaluate_guess(opti, J_all, q_term_all, q_dot_term_all, q_dot_dot_term_all, ...
    GRF_term_all, GRM_term_all, act_term_all, act_der_term_all, ...
    dMTf_dt_term_all, pelvis_term_all, GRF_eval_all, pelvis_res_eval_all, eq_constr_eval_all, ...
