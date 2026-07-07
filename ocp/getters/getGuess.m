@@ -104,11 +104,6 @@ Qdots_spline_col = (Qdots_spline_col)./scaling.Qsdot;
 Qdotdots_spline_col = (Qdotdots_spline_col)./scaling.Qsdotdot;
 
 
-% increase a little bit the pelvis Y values
-Qs_spline(:, pelvis_y_idx) = Qs_spline(:, pelvis_y_idx) + Qs_spline(:, pelvis_y_idx) * scaling_factor;
-Qs_spline_col(:, pelvis_y_idx) = Qs_spline_col(:, pelvis_y_idx) + Qs_spline_col(:, pelvis_y_idx) * scaling_factor;
-
-
 % add the splined Q, Qdot and Qdotdot to a 'guess' struct
 
 % We first need to place Qs and Qsdot as Simbody/OpenSim expect the state
