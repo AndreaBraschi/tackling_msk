@@ -130,6 +130,16 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
     Qs.allfilt(:, pelvis_y_idx + 1) = Qs.allfilt(:, pelvis_y_idx + 1) + ...
         Qs.allfilt(:, pelvis_y_idx + 1) * pelvis_y;
 
+    % find the indices of the c-spine translational DoFs
+    spine_t_names = config_struct.("c_spine_translational_dof_names");
+    spine_t_indices = cellfun(@(name) find(strcmp(q_names, name)), spine_t_names);
+    num_spine_t = size(spine_t_names, 1);
+
+    % zero the values of Qs corresponding to the spine translational DoFs.
+    % We can do it here as we're not going to track the experimental data,
+    % and we're going to make our life easier when it comes to guess
+    % generation (0) and bounds ([-1 1])
+    Qs.allfilt(:, spine_t_indices + 1) = 0;
 
     dof_indices_all = 1:num_q_all;
 
@@ -150,34 +160,44 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
 
 
     % read names of dependent coordinates
-    dependent_coord_names = config_struct.("dependent_coord_names");
+    q_dep_names = config_struct.("dependent_coord_names");
     % find dependent coordinates indices
-    dependent_coord_idx = cellfun(@(name) find(strcmp(q_names, name)), dependent_coord_names);
+    q_dep_indices = cellfun(@(name) find(strcmp(q_names, name)), q_dep_names);
 
-    dependent_coord_names_check = q_names(dependent_coord_idx);
+    q_dep_names_check = q_names(q_dep_indices);
 
     % independent coordinates indices
-    independent_coord_idx = setdiff(dof_indices_all, dependent_coord_idx);
-    independent_coord_names = q_names(independent_coord_idx);
+    q_ind_indices = setdiff(dof_indices_all, q_dep_indices);
+    q_ind_names = q_names(q_ind_indices);
+
+    % differentiate between number of independent and dependent coords 
+    num_q_dep = size(q_dep_names, 1);
+    num_q_ind = num_q_all - num_q_dep;   
+    
+    % now, let's find the indices of the c-spine translational DoFs within
+    % the set of independent DoFs
+    spine_t_ind_indices = cellfun(@(name) find(strcmp(q_ind_names, name)), spine_t_names');
+    local_ind_indices = 1:num_q_ind;
+    local_tracking_indices = setdiff(local_ind_indices, spine_t_ind_indices);
+    
+    
+    % now let's get the indices of the q's to track
+    q_tracking_indices = setdiff(q_ind_indices, spine_t_indices');
+    num_q_tracking = size(q_tracking_indices, 2);
 
 
     % we register the number of the independent DoFs that aren't spanned 
     % by muscles as "number of actuators". This simply means that the force
     % actuator for these coordinates is modelled as an idealised actuator, 
     % and it doesn't have all the inherent complexity of a muscle.
-    independent_act_indices = setdiff(other_indices, dependent_coord_idx');
+    independent_act_indices = setdiff(other_indices, q_dep_indices');
     independent_act_indices = [independent_act_indices(7:end-6), independent_act_indices(end-2:end)];
     %independent_act_indices = independent_act_indices(7:end-6);
     
     independent_act_names = q_names(independent_act_indices);
     num_actuators = size(independent_act_indices, 2);
     
-    
-    % differentiate between number of independent and dependent coords 
-    num_q_dep = size(dependent_coord_names, 1);
-    num_q_ind = num_q_all - num_q_dep;
-    
-    
+       
     % load Ground Reaction Forces
     grf_filepath = fullfile(trial_dir, "/grf/", trial_id + ".mot");
     GRFs = readMotGrf(grf_filepath, 20);
@@ -230,20 +250,23 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
     GRM_col = interp1(GRFs.time, GRFs.data(:, grm_indices), time_grid');
 
     % ----------------------------- Bounds  ----------------------------- %
-    [bounds, scaling] = getBounds(Qs, independent_coord_idx, GRFs, ...
+    [bounds, scaling] = getBounds(Qs, q_ind_indices, GRFs, ...
         num_q_all, num_muscles, num_actuators, grf_indices, grm_indices, ...
-        scale_factors);
+        pelvis_y_idx, scale_factors);
 
     
     % -------------------------- Initial Guess  ------------------------- %
-    guess = getGuess(Qs, independent_coord_idx, time_intervals, time_grid, ...
+    guess = getGuess(Qs, q_ind_indices, time_intervals, time_grid, ...
         num_q_all, num_muscles, num_actuators, scaling, pelvis_y_idx, pelvis_y);
 
+    save("guess.mat", "guess");
+
+    
     % check whether initial guess are outside of the bounds
     qs_guess = guess.Qs_all_ind;
     qs_lower = bounds.X.lower;
     qs_upper = bounds.X.upper;
-    interleaved = reshape(repmat(independent_coord_names, 2, 1), 1, []);
+    interleaved = reshape(repmat(q_ind_names, 2, 1), 1, []);
     for n = 1:size(qs_guess, 2)
         q_guess = qs_guess(:, n);
         q_lower = qs_lower(:, n);
@@ -266,19 +289,22 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
     % ------------------- Experimental Data Scaling  ------------------- %
     % we have the scaled experimental data stored in the 'guess' struct.
     % q
+    guess.Qs_all(:, (pelvis_y_idx * 2) - 1) = guess.Qs_all(:, (pelvis_y_idx * 2) - 1) - ...
+        guess.Qs_all(:, (pelvis_y_idx * 2) - 1) * pelvis_y;
+
     Qs_scaled_all = guess.Qs_all(:, 1:2:end);
     Qs_scaled_col_all = guess.Qs_col(:, 1:2:end);
         
     % retrieve just independent coordinates
-    Qs_scaled = Qs_scaled_all(:, independent_coord_idx);
-    Qs_scaled_col = Qs_scaled_col_all(:, independent_coord_idx);
+    Qs_scaled = Qs_scaled_all(:, q_tracking_indices);
+    Qs_scaled_col = Qs_scaled_col_all(:, q_tracking_indices);
     
     % q dot
     Qdots_scaled_all = guess.Qs_all(:, 2:2:end);
     Qdots_scaled_col_all = guess.Qs_col(:, 2:2:end);
     % retrieve just independent coordinates
-    Qdots_scaled = Qdots_scaled_all(:, independent_coord_idx);
-    Qdots_scaled_col = Qdots_scaled_col_all(:, independent_coord_idx);
+    Qdots_scaled = Qdots_scaled_all(:, q_tracking_indices);
+    Qdots_scaled_col = Qdots_scaled_col_all(:, q_tracking_indices);
     
 
     % GRF
@@ -289,6 +315,8 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
     % GRM
     scaling.GRM = max(abs(min(GRM_col)), abs(max(GRM_col)));
     GRM_scaled = GRM_col./scaling.GRM;
+
+    save("scaling.mat", "scaling");
 
 
     % ------------------------------------------------------------------- %
@@ -473,12 +501,17 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
 
 
     % ------- Experimental Data to Track ------- %
-    Qs_track_k = MX.sym('Qs_track_k', num_q_ind);
-    Qs_track_j = MX.sym('Qs_track_j', num_q_ind, d);
+    % ------------------------ TODO -----------------------------------%
+    % here we need to update the number of q's that is used to initialise
+    % the experimental data to track
+    tracking_indices = 1:num_q_tracking;
+    no_pelvis_ty_indices = setdiff(tracking_indices, pelvis_y_idx);
+    Qs_track_k = MX.sym('Qs_track_k', num_q_tracking);
+    Qs_track_j = MX.sym('Qs_track_j', num_q_tracking, d);
     Qs_track_kj = [Qs_track_k Qs_track_j];
     
-    Qdots_track_k = MX.sym('Qdots_track_k', num_q_ind);
-    Qdots_track_j = MX.sym('Qdots_track_j', num_q_ind, d);
+    Qdots_track_k = MX.sym('Qdots_track_k', num_q_tracking);
+    Qdots_track_j = MX.sym('Qdots_track_j', num_q_tracking, d);
     Qdots_track_kj = [Qdots_track_k Qdots_track_j];
     
     num_grfs = 6;
@@ -511,13 +544,13 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
 
     % we need to make use of the unscaled version of the data
     Xkj_nsc = MX.zeros(size(Xkj));
-    Xkj_nsc(1:2:end, :) = Xkj(1:2:end,:).*scaling.Qs(:, independent_coord_idx)';
-    Xkj_nsc(2:2:end, :) = Xkj(2:2:end,:).*scaling.Qsdot(:, independent_coord_idx)';
+    Xkj_nsc(1:2:end, :) = Xkj(1:2:end,:).*scaling.Qs(:, q_ind_indices)';
+    Xkj_nsc(2:2:end, :) = Xkj(2:2:end,:).*scaling.Qsdot(:, q_ind_indices)';
    
     FTtildekj_nsc = FTtildekj.*(scaling.FTtilde');
     
     dFTtildej_nsc = dFTtildej.*scaling.dFTtilde;
-    Aj_nsc = Aj.*(scaling.Qsdotdot(:, independent_coord_idx)');  
+    Aj_nsc = Aj.*(scaling.Qsdotdot(:, q_ind_indices)');  
     
     vAk_nsc = vAk.*scaling.vA;  
 
@@ -531,13 +564,18 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
 
     % --- sum of squares --- %
     % q
-    J_q = sum_of_squares('q', num_q_ind);
+    num_pelvis_ty = 1;
+    J_pelvis_ty = sum_of_squares('pelvis_ty', num_pelvis_ty);
+    J_q = sum_of_squares('q', num_q_tracking - num_pelvis_ty);
     
     % q_dot
-    J_q_dot = sum_of_squares('q_dot', num_q_ind);
+    J_q_dot = sum_of_squares('q_dot', num_q_tracking);
 
     % q_dot_dot
     J_q_dot_dot = sum_of_squares('q_dot_dot', num_q_ind);
+
+    % c-spine translational DoFs
+    J_spine_t = sum_of_squares('spine_t', num_spine_t);
 
     % muscle activation
     J_muscles_act = sum_of_squares('muscle_act', num_muscles);
@@ -557,7 +595,7 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
     % Pelvis residuals
     J_pelvis = sum_of_squares('pelvis', num_body_dof);
 
-    % Pelvis residuals
+    % Punching bag rotational residuals
     J_pb = sum_of_squares('pb', 3);
 
     % --------------- evaluation function ---------------------%
@@ -606,12 +644,14 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
     % cost function
     J = MX.zeros(1, 1);
     q_term = MX.zeros(1, 1);
+    pelvis_ty_term = MX.zeros(1, 1);
     q_dot_term = MX.zeros(1, 1);
     GRF_term = MX.zeros(1, 1);
     GRM_term = MX.zeros(1, 1);
     act_term = MX.zeros(1, 1);
     act_der_term = MX.zeros(1, 1);
     q_dot_dot_term = MX.zeros(1, 1);
+    c_spine_term = MX.zeros(1, 1);
     dMTf_dt_term = MX.zeros(1, 1);
     pelvis_term = MX.zeros(1, 1);
     pb_term = MX.zeros(1, 1);
@@ -635,7 +675,7 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
         % current q accelerations
         acc_i = Aj_nsc(:, i);
 
-        [x_all_i, acc_all_i] = apply_constraints(x_i, acc_i, q_names, independent_coord_idx);
+        [x_all_i, acc_all_i] = apply_constraints(x_i, acc_i, q_names, q_ind_indices);
 
         % evaluate external function
         Ti = F(vertcat(x_all_i, acc_all_i));
@@ -666,11 +706,20 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
         
         % ---------------- Cost Function Terms ---------------- %
         % Q
-        q_diff = Xkj(1:2:end, i + 1) - Qs_track_kj(:, i + 1);
+        % let's remove the c-spine translational DoFs from the experimental 
+        % motion tracking terms
+        q_i = Xkj(1:2:end, i + 1);
+        
+        pelvis_ty_diff = q_i(pelvis_y_idx, :) - Qs_track_kj(pelvis_y_idx, i + 1); 
+        pelvis_ty_term = pelvis_ty_term + W.pelvis_ty * B(i + 1) * J_pelvis_ty(pelvis_ty_diff) * mesh_T;
+        
+        q_new_indices = setdiff(local_tracking_indices, pelvis_y_idx);
+        q_diff = q_i(q_new_indices, :) - Qs_track_kj(no_pelvis_ty_indices, i + 1);
         q_term = q_term + W.q * B(i + 1) * J_q(q_diff) * mesh_T;
 
         % Q dot
-        q_dot_diff = Xkj(2:2:end, i + 1) - Qdots_track_kj(:, i + 1);
+        q_dot_i = Xkj(2:2:end, i + 1);
+        q_dot_diff = q_dot_i(local_tracking_indices, :) - Qdots_track_kj(:, i + 1);
         q_dot_term = q_dot_term + W.q_dot * B(i + 1) * J_q_dot(q_dot_diff) * mesh_T;
 
         % GRF
@@ -692,6 +741,9 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
         % Q dot dot: Accelerations
         q_dot_dot_term = q_dot_dot_term + W.acc * B(i + 1) * J_q_dot_dot(Aj(:, i)) * mesh_T;
 
+        % term for c-spine translational DoFs
+        c_spine_term = c_spine_term + W.c_spine * B(i + 1) * J_spine_t(Xkj(spine_t_ind_indices, i + 1)) * mesh_T;
+
         % derivative of MT force
         dMTf_dt_term = dMTf_dt_term + W.u * B(i + 1) * J_MT_unit(dFTtildej(:, i)) * mesh_T;
 
@@ -703,8 +755,9 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
         
         
         % ------------ add them up ----------- %
-        J = q_term + q_dot_term + q_dot_dot_term + GRF_term + GRM_term + ...
-            act_term + act_der_term + dMTf_dt_term + pelvis_term + pb_term;
+        J = q_term + pelvis_ty_term + q_dot_Tterm + q_dot_dot_term + GRF_term + GRM_term + ...
+            act_term + act_der_term + dMTf_dt_term + c_spine_term + ...
+            pelvis_term + pb_term;
 
         
         % --------------------------------------------------------------- %
@@ -716,11 +769,11 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
 
         Q_nsc_dot  = Xkj_nsc(1:2:end, :) * C(:, i + 1);  % [num_q, d + 1] @ [d+1, 1] -> [num_q, 1]
         Qdots_nsc_dot  = Xkj_nsc(2:2:end, :) * C(:, i + 1);  % [num_q, 1] @ [d + 1, 1] -> [num_q, 1]          
-        
+
         FTtilde_nsc_dot  = FTtildekj_nsc * C(:, i + 1);% [num_q, d + 1] @ [d+1, 1] -> [num_q, 1]
-   
+
         a_dot  = akj * C(:, i + 1); % [num_muscle, d + 1] @ [d+1, 1] -> [num_muscles, 1]
-        
+
         a_a_dot  = a_akj * C(:, i + 1); % [num_actuators, d + 1] @ [d+1, 1] -> [num_actuators, 1]
          
         
@@ -728,22 +781,22 @@ function [w_opt, stats] = track_sim(trial_id, trial_dir, dll_filepath)
         eq_constr{end+1} = (mesh_T * vAk_nsc - a_dot)./scaling.a;
         muscle_act_der = (mesh_T * vAk_nsc)./scaling.a;
         muscle_act_der_computed = (a_dot)./scaling.a;
-        
+
         % Contraction dynamics (implicit formulation)     
         eq_constr{end+1} = (mesh_T * dFTtildej_nsc(:, i) - FTtilde_nsc_dot)./scaling.FTtilde';
         contraction_der = (mesh_T * dFTtildej_nsc(:, i))./scaling.FTtilde';
         contraction_der_computed = (FTtilde_nsc_dot)./scaling.FTtilde';
-        
+
         % Skeleton dynamics (implicit formulation)               
         Qdotj_nsc = Xkj_nsc(2:2:end, i + 1); % velocity
-        eq_constr{end+1} = (mesh_T * Qdotj_nsc - Q_nsc_dot)./scaling.Qs(:, independent_coord_idx)';
-        eq_constr{end+1} = (mesh_T * Aj_nsc(:, i) - Qdots_nsc_dot)./scaling.Qsdot(:, independent_coord_idx)';
+        eq_constr{end+1} = (mesh_T * Qdotj_nsc - Q_nsc_dot)./scaling.Qs(:, q_ind_indices)';
+        eq_constr{end+1} = (mesh_T * Aj_nsc(:, i) - Qdots_nsc_dot)./scaling.Qsdot(:, q_ind_indices)';
 
 
-        vel = (mesh_T * Qdotj_nsc)./scaling.Qs(:, independent_coord_idx)';
-        vel_computed = Q_nsc_dot./scaling.Qs(:, independent_coord_idx)';
-        acc = (mesh_T * Aj_nsc(:, i))./scaling.Qsdot(:, independent_coord_idx)';
-        acc_computed = Qdots_nsc_dot./scaling.Qsdot(:, independent_coord_idx)';
+        vel = (mesh_T * Qdotj_nsc)./scaling.Qs(:, q_ind_indices)';
+        vel_computed = Q_nsc_dot./scaling.Qs(:, q_ind_indices)';
+        acc = (mesh_T * Aj_nsc(:, i))./scaling.Qsdot(:, q_ind_indices)';
+        acc_computed = Qdots_nsc_dot./scaling.Qsdot(:, q_ind_indices)';
 
 
         % Torque actuator activation dynamics (explicit formulation)   
