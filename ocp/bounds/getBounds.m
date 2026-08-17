@@ -1,5 +1,6 @@
 function [bounds, scaling] = getBounds(Qs, independent_coord_idx, GRFs, ...
-    num_q, num_muscles, num_act, grf_indices, grm_indices, scale_factors)
+    num_q, num_muscles, num_act, grf_indices, grm_indices, pelvis_y_idx, ...
+    c_spine_t_indices, c_spine_t_bounds, scale_factors)
 
 % This function assign the bounds to: model coordinates (Qs), Ground
 % Reaction Forces (GRF), muscle activation, rate of change of muscle
@@ -51,11 +52,36 @@ for i = 1:num_q
         Qs.upper(i) = max(y(i).pos); 
         Qs.lower(i) = min(y(i).pos);
     end
+
+    if Qs.lower(i) == Qs.upper(i)
+        fprintf('WARNING: %d coordinate(s) have identical upper and lower bounds:\n', i);
+    end
+    
+
 end
 % scale
 scaling.Qs = max(abs(Qs.lower), abs(Qs.upper));
 Qs.lower = (Qs.lower)./scaling.Qs;
 Qs.upper = (Qs.upper)./scaling.Qs;
+
+% adjust the bounds for the translational degrees of freedom of the spine: 
+% if we use 1 as bound, this is 1 meter. We actually want this range (lower
+% - upper) to be in the mm scale.
+c_tx = c_spine_t_indices(1:3:end, :);
+c_ty = c_spine_t_indices(2:3:end, :);
+c_tz = c_spine_t_indices(3:3:end, :);
+
+Qs.lower(:, c_tx) = -c_spine_t_bounds(1, :);
+Qs.lower(:, c_ty) = -c_spine_t_bounds(2, :);
+Qs.lower(:, c_tz) = -c_spine_t_bounds(3, :);
+
+Qs.upper(:, c_tx) = c_spine_t_bounds(1, :);
+Qs.upper(:, c_ty) = c_spine_t_bounds(2, :);
+Qs.upper(:, c_tz) = c_spine_t_bounds(3, :);
+
+% let's add some extra room for pelvis_ty
+pelvis_y_sf = scale_factors.("pelvis_y");
+Qs.lower(:, pelvis_y_idx) = Qs.lower(:, pelvis_y_idx) -  Qs.lower(:, pelvis_y_idx) * pelvis_y_sf * 1.25;
 
 Qs.lower_ind = Qs.lower(:, independent_coord_idx);
 Qs.upper_ind = Qs.upper(:, independent_coord_idx);
@@ -70,6 +96,10 @@ for i = 1:num_q
     else
         Qsdot.upper(i) = max(y(i).vel); 
         Qsdot.lower(i) = min(y(i).vel);
+    end
+
+    if Qsdot.lower(i) == Qsdot.upper(i)
+        fprintf('WARNING: %d coordinate(s) have identical upper and lower bounds:\n', i);
     end
 end
 
