@@ -1,6 +1,7 @@
 __pycache__/
 .idea/
 polynomial_fitting/
+.venv/
 
 *.log
 *.asv
