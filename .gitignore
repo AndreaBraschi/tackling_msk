@@ -3,5 +3,8 @@ __pycache__/
 polynomial_fitting/
 .venv/
 
+*.egg-info/
+**/build/
+
 *.log
 *.asv
