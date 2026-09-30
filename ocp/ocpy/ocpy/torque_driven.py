@@ -223,7 +223,8 @@ def torque_driven(model_path: str, ik_path: str, dll_path: str, config_filepath:
     # we define one actuator per independent DoF here we check which coordinates the user has indicated as where to
     # assign the residual forces. We need to make sure that we correctly separate the residual forces from the actuator
     # forces/torques so that we can assign them to the correct set of constraints.
-    actuator_indices = [i for i in q_ind_indices if i not in res_indices]
+    exclude = set(res_indices) | set(no_tracking_indices)
+    actuator_indices = [i for i in q_ind_indices if i not in exclude]
     actuator_names = [name for i, name in enumerate(q_names) if i in actuator_indices]
     num_actuators = len(actuator_indices)
 
@@ -391,11 +392,11 @@ def torque_driven(model_path: str, ik_path: str, dll_path: str, config_filepath:
 
     # ---------- controls ---------- #
     # torque actuator excitation
-    e_ak  = ca.MX.sym("e_ak",  num_actuators)
+    e_ak  = ca.MX.sym("e_ak", num_actuators)
 
     # generalised coordinate accelerations: remember, we're using implicit formulation. Therefore,
     #  accelerations are treated as "controls".
-    Aj  = ca.MX.sym("Aj",    num_q_ind, d)
+    Aj  = ca.MX.sym("Aj", num_q_ind, d)
 
     # ---------- experimental data to track ---------- #
     q_track_k  = ca.MX.sym("Qs_track_k",  num_q_tracking)
@@ -423,7 +424,7 @@ def torque_driven(model_path: str, ik_path: str, dll_path: str, config_filepath:
         var_size: int = values[1]    # how many DoFs the residual forces are applied to
 
         # register decision variable
-        res_sym[key] = ca.MX.sym(f"{key}_j", var_size, N * d)
+        res_sym[key] = ca.MX.sym(f"{key}_j", var_size, d)
         func_in.append(res_sym[key])
 
 
@@ -503,7 +504,7 @@ def torque_driven(model_path: str, ik_path: str, dll_path: str, config_filepath:
     # ---------------------------------------------------------------------------------------------------------------- #
     for i in range(d):
         # current independent q and q_dot
-        x_i   = Xkj_nsc[:, i + 1]
+        x_i  = Xkj_nsc[:, i + 1]
 
         # current independent accelerations
         acc_i = Aj_nsc[:, i]
@@ -573,10 +574,10 @@ def torque_driven(model_path: str, ik_path: str, dll_path: str, config_filepath:
         # approximate derivative of q
         qdot_nsc_approx = Xkj_nsc[::2, :] @ C[:, i + 1]       # [num_q, d + 1] @ [d+1, 1] -> [num_q, 1]
         # approximate derivative of q_dot
-        acc_nsc_approx = Xkj[1::2, :] @ C[:, i + 1]
+        acc_nsc_approx = Xkj_nsc[1::2, :] @ C[:, i + 1]
 
         # retrieve unscaled decision variables at the current collocation point
-        qdot_nsc = Xkj[1::2, i + 1]
+        qdot_nsc = Xkj_nsc[1::2, i + 1]
 
         eq_constr.append((mesh_T * qdot_nsc - qdot_nsc_approx) / x_scaling.Qs[q_ind_indices])
         eq_constr.append((mesh_T * acc_i - acc_nsc_approx) / x_scaling.Qsdot[q_ind_indices])
@@ -608,7 +609,7 @@ def torque_driven(model_path: str, ik_path: str, dll_path: str, config_filepath:
         # the residuals computed from the current kineamatics is below the threshold that the user defined.
         for key in list(res_keys):
             res_tau = Ti[res_sf_indices[key], 0] / res_sf_value[key]
-            eq_constr.append(res_sym[key][:, i + 1] - res_tau)
+            eq_constr.append(res_sym[key][:, i] - res_tau)
 
 
     eq_constr  = ca.vertcat(*eq_constr)
@@ -689,10 +690,11 @@ def torque_driven(model_path: str, ik_path: str, dll_path: str, config_filepath:
     options['ipopt']['mu_strategy'] = 'adaptive'
     options['ipopt']['max_iter'] = cfg["optimiser"]["max_iters"]
     tolerance = cfg["optimiser"]["tolerance"]
-    options['ipopt']['tol'] = 1 * 10 ^ (-tolerance)
+    options['ipopt']['tol'] = 1 * 10 ** (-tolerance)
     options['ipopt']['print_timing_statistics'] = 'yes'
     options['ipopt']['nlp_scaling_method'] = 'none'
     options['ipopt']['obj_scaling_factor'] = 1
+    options['ipopt']['print_level'] = 5
     opti.solver('ipopt', options)
 
     # --------------------------------------------------------------- #
