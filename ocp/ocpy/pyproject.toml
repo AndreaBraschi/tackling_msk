@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools-scm"] # PEP 508 specs
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ocpy"
+dynamic = ["version"] # Generate version from git tags
+authors = [
+    {name = "Andrea Braschi", email = "andrea.braschi@forceteck.com"},
+]
+maintainers = [
+    {name = "Andrea Braschi", email = "andrea.braschi@forceteck.com"},
+]
+description = "solve Optimal Control Problem via the Direct Collocation method for trajectory optimization"
+readme = "README.md"
+requires-python = ">=3.11"
+keywords = ["optimal control", "trajectory optimisation", "direct collocation", "impact", "cervical spine"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Healthcare Industry",
+    "Intended Audience :: Education",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering",
+]
+
+dependencies = [
+    "opensim",
+    "casadi",
+    "scipy",
+    "osim_utils @ git+https://github.com/AndreaBraschi/osim_utils.git@master"
+]
