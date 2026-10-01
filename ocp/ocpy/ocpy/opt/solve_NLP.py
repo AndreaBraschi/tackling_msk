@@ -13,40 +13,30 @@ def solve_NLP(opti, optionssol):
     #  Sparsity pattern of constraint Jacobian
     # ------------------------------------------------------------------ #
     jac_sp = ca.jacobian(opti.g, X).sparsity()
-    sp = ca.DM(jac_sp, 1)  # binary sparse matrix (nG x nX)
+    rows, cols = jac_sp.get_triplet()
+    rows, cols = np.asarray(rows), np.asarray(cols)
+    is_single = np.bincount(rows, minlength=opti.ng) == 1
+    var_of_row = np.full(opti.ng, -1)
+    var_of_row[rows] = cols
 
-    sp_np = np.array(ca.DM.full(sp))  # dense numpy for indexing
-
-    # Find constraints that depend on exactly 1 variable
-    is_single = sp_np.sum(axis=1) == 1  # shape (nG,)
-
-    # Find constraints with at most linear dependency (order 2 = quadratic -> False means linear/constant)
-    is_linear = ~np.array(
-        ca.which_depends(opti.g, X, 2, True)
-    ).flatten().astype(bool)  # shape (nG,)
-
-    # Simple bounds: single variable AND linear
+    is_linear = ~np.array(ca.which_depends(opti.g, X, 2, True)).flatten().astype(bool)
     is_simple = is_single & is_linear
-
-    # Which variable index does each simple constraint refer to?
     simple_rows = np.where(is_simple)[0]
-    col = np.array([np.where(sp_np[r, :])[0][0] for r in simple_rows])  # variable indices
+    col = var_of_row[simple_rows]
 
     # ------------------------------------------------------------------ #
     #  Read constraint bounds
     # ------------------------------------------------------------------ #
-    lbg = np.array(opti.lbg).flatten()
-    ubg = np.array(opti.ubg).flatten()
+    lbg = np.array(ca.evalf(opti.lbg)).flatten()
+    ubg = np.array(ca.evalf(opti.ubg)).flatten()
 
     # Detect f2(p)*x + f1(p): handles scaled variables correctly
     gf = ca.Function(
         'gf',
         [opti.x, opti.p],
-        [
-            opti.g[simple_rows],
-            ca.jtimes(opti.g[simple_rows], opti.x, ca.DM.ones(opti.nx, 1))
-        ]
+        [opti.g[simple_rows], ca.jtimes(opti.g[simple_rows], opti.x, ca.DM.ones(opti.nx, 1))]
     )
+
     f1, f2 = gf(0, opti.p)
     f1 = np.array(ca.evalf(f1)).flatten()
     f2 = np.array(ca.evalf(f2)).flatten()
