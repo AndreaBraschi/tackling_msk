@@ -1,9 +1,10 @@
 from scipy import signal
-from numpy import ndarray
+import numpy as np
 
-def butterworth(data: ndarray, dt: float, order: int, cutoff: int, filter_type: str):
+def butterworth(time: np.ndarray, data: np.ndarray, dt: float, order: int, cutoff: int, filter_type: str):
 
-    adj_cutoff = 2 * cutoff * dt
+    fs = 1 / np.mean(np.diff(time))
+    adj_cutoff = cutoff / (0.5 * fs)
     b, a = signal.butter(order, adj_cutoff, btype=filter_type)
     res = signal.filtfilt(b, a, data, padlen=10)
 
