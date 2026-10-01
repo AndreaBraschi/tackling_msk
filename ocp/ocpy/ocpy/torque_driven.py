@@ -61,7 +61,6 @@ def torque_driven(model_path: str, ik_path: str, dll_path: str, config_filepath:
     F = ca.external('F', dll_path)
     dll_force_idx = cfg["dll_force_indices"]
     dll_grf_idx = np.array(dll_force_idx["rGRF"] + dll_force_idx["lGRF"]) - 1  # 0-based
-    dll_grm_idx = np.array(dll_force_idx["rGRM"] + dll_force_idx["lGRM"]) - 1
 
     # -------------------------- OpenSim Model -------------------------- #
     model = osim.Model(model_path)
@@ -143,7 +142,7 @@ def torque_driven(model_path: str, ik_path: str, dll_path: str, config_filepath:
 
     # filter
     order = 2
-    cutoff = 15
+    cutoff = 20
 
     # convert to radians
     # 1) check which indices contain translational DoFs
@@ -156,7 +155,7 @@ def torque_driven(model_path: str, ik_path: str, dll_path: str, config_filepath:
     # 2) convert degrees --> radians
     ikCoordinates[:, ~trans_mask] *= (np.pi / 180)
 
-    Qs = butterworth(ikCoordinates.T, dt_raw, order, cutoff, 'low')
+    Qs = butterworth(time_raw, ikCoordinates.T, dt_raw, order, cutoff, 'low')
 
     #  assign the initial value prescribed by the user
     if no_tracking_names:
@@ -165,7 +164,7 @@ def torque_driven(model_path: str, ik_path: str, dll_path: str, config_filepath:
     # see if the user provided any GRF
     if grf_path:
         GRFs_raw = readStoFile(grf_path)
-        GRFs = butterworth(GRFs_raw.values[:, 1:].T, dt_raw, order, cutoff, 'low')
+        GRFs = butterworth(GRFs_raw["time"].values, GRFs_raw.values[:, 1:].T, dt_raw, order, cutoff, 'low')
         dt_GRF = GRFs_raw["time"][1] - GRFs_raw["time"][0]
         grf_indices = np.array(cfg["experimental_force_indices"]["rGRF"] + cfg["experimental_force_indices"]["lGRF"]) - 1
 
@@ -703,14 +702,3 @@ def torque_driven(model_path: str, ik_path: str, dll_path: str, config_filepath:
 
     return w_opt, stats, g_opt, lambda_x, lambda_g
 
-if __name__ == "__main__":
-    model_path = r"C:\Users\ab3758\Documents\PhD\msk\P5\scaled_model_final.osim"
-    ik_path = r"C:\Users\ab3758\Documents\PhD\msk\P5\ik\P05R0002_ik.mot"
-    dll_path = r'C:\Users\ab3758\Documents\projects\tackling_msk\ocp\dlls\P05\build\RelWithDebInfo\P05.dll'
-    config_filepath = r"C:\Users\ab3758\Documents\projects\tackling_msk\ocp\configs\tackling/config.json"
-    kinematic_coupling_path = r"C:\Users\ab3758\Documents\projects\tackling_msk\ocp\configs\tackling\kinematic_coupling_config.json"
-
-    output_dir = r"C:\Users\ab3758\Documents\PhD\msk\P5\opt\py"
-    grf_path = r"C:\Users\ab3758\Documents\PhD\msk\P5\grf\P05R0002.mot"
-
-    torque_driven(model_path, ik_path, dll_path, config_filepath, kinematic_coupling_path,output_dir, grf_path)
