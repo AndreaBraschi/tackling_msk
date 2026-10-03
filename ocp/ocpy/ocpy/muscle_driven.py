@@ -292,10 +292,24 @@ def muscle_driven(model_path: str, ik_path: str, dll_path: str, config_filepath:
     # Muscle activation
     # 1) collocation points
     a_m_col = opti.variable(num_muscles, N * d)
+    opti.subject_to(muscle_bounds['a_lower'] <= (a_m_col <= muscle_bounds['a_upper']))
+    opti.set_initial(a_m_col, muscle_guess["a_m_col"])
 
     # 2) mesh end-points
     a_m = opti.variable(num_muscles, N + 1)
+    opti.subject_to(muscle_bounds['a_lower'] <= (a_m <= muscle_bounds['a_upper']))
+    opti.set_initial(a_m, muscle_guess["a_m"])
 
+    # MTU Force
+    # 1) collocation points
+    mtu_f_col = opti.variable(num_muscles, N * d)
+    opti.subject_to(muscle_bounds['mtu_f_lower'] <= (mtu_f_col <= muscle_bounds['mtu_f_upper']))
+    opti.set_initial(mtu_f_col, muscle_guess["mtu_f_col"])
+
+    # 2) mesh end-points
+    mtu_f = opti.variable(num_muscles, N + 1)
+    opti.subject_to(muscle_bounds['mtu_f_lower'] <= (mtu_f <= muscle_bounds['mtu_f_upper']))
+    opti.set_initial(mtu_f, muscle_guess["mtu_f"])
 
     # Torque actuators
     # 1) collocation points
@@ -308,7 +322,7 @@ def muscle_driven(model_path: str, ik_path: str, dll_path: str, config_filepath:
     opti.subject_to(torque_bounds.a_a_lower <= (a_a <= torque_bounds.a_a_upper))
     opti.set_initial(a_a, torque_guess["a_a"].T)
 
-    print(f"States: {num_q_ind * 2 + num_actuators}")
+    print(f"Number of States: {num_q_ind * 2 + num_actuators + num_muscles * 2}")
 
     # -------------------- Controls ------------------------- #
     e_a = opti.variable(num_actuators, N + 1)
@@ -320,7 +334,18 @@ def muscle_driven(model_path: str, ik_path: str, dll_path: str, config_filepath:
     opti.subject_to(x_bounds.Qsdotdot_lower_ind < (A_col <= x_bounds.Qsdotdot_upper_ind))
     opti.set_initial(A_col, x_guess["acc_col"].T)
 
-    print(f"Controls: {num_actuators + num_q_ind}")
+
+    # muscle activation time derivative
+    va = opti.variable(num_muscles, N + 1)
+    opti.subject_to(muscle_bounds['va_lower'] <= (va <= muscle_bounds['va_upper']))
+    opti.set_initial(va, muscle_guess["va"])
+
+    # MTU force time derivative
+    mtu_df_col = opti.variable(num_muscles, N * d)
+    opti.subject_to(muscle_bounds['mtu_df_lower'] <= (mtu_df_col <= muscle_bounds['mtu_df_upper']))
+    opti.set_initial(mtu_df_col, muscle_guess["mtu_df_col"])
+
+    print(f"Number of Controls: {num_actuators + num_q_ind + num_muscles * 2}")
 
 
     func_map_in = [
@@ -330,6 +355,12 @@ def muscle_driven(model_path: str, ik_path: str, dll_path: str, config_filepath:
         a_a[:, :-1],
         a_a_col,
         e_a[:, :-1],
+        a_m[:, :-1],
+        a_m_col,
+        mtu_f[:, :-1],
+        mtu_f_col,
+        va[:, :-1],
+        mtu_df_col,
         ca.MX(q_end_scaled[:-1, :].T),
         ca.MX(q_col_scaled.T),
         ca.MX(qdot_end_scaled[:-1, :].T),
@@ -387,6 +418,16 @@ def muscle_driven(model_path: str, ik_path: str, dll_path: str, config_filepath:
     a_aj  = ca.MX.sym("a_aj",  num_actuators, d)
     a_akj = ca.horzcat(a_ak, a_aj)
 
+    # muscle activation
+    a_mk  = ca.MX.sym("a_mk",  num_muscles)
+    a_mj  = ca.MX.sym("a_mj",  num_muscles, d)
+    a_mkj = ca.horzcat(a_mk, a_mj)
+
+    # MTU force
+    mtu_f_k  = ca.MX.sym("mtu_f_k",  num_muscles)
+    mtu_f_j  = ca.MX.sym("mtu_f_j",  num_muscles, d)
+    mtu_f_kj = ca.horzcat(mtu_f_k , mtu_f_j)
+
 
     # ---------- controls ---------- #
     # torque actuator excitation
@@ -395,6 +436,12 @@ def muscle_driven(model_path: str, ik_path: str, dll_path: str, config_filepath:
     # generalised coordinate accelerations: remember, we're using implicit formulation. Therefore,
     #  accelerations are treated as "controls".
     Aj  = ca.MX.sym("Aj", num_q_ind, d)
+
+    # muscle activation time derivative
+    va_k = ca.MX.sym("va_k",  num_muscles)
+
+    # MTU force time derivative
+    mtu_df_j = ca.MX.sym("mtu_df_j", num_muscles, d)
 
     # ---------- experimental data to track ---------- #
     q_track_k  = ca.MX.sym("Qs_track_k",  num_q_tracking)
@@ -405,7 +452,8 @@ def muscle_driven(model_path: str, ik_path: str, dll_path: str, config_filepath:
     qd_track_j  = ca.MX.sym("qd_track_j",  num_q_tracking, d)
     qd_track_kj = ca.horzcat(qd_track_k, qd_track_j)
 
-    func_in = [Xk, Xj, Aj, a_ak, a_aj, e_ak, q_track_k, q_track_j, qd_track_k, qd_track_j]
+    func_in = [Xk, Xj, Aj, a_ak, a_aj, e_ak, a_mk, a_mj, mtu_f_k, mtu_f_j, va_k, mtu_df_j,
+               q_track_k, q_track_j, qd_track_k, qd_track_j]
 
     if grf_path:
         num_grfs = GRF_col.shape[-1]
@@ -426,13 +474,19 @@ def muscle_driven(model_path: str, ik_path: str, dll_path: str, config_filepath:
         func_in.append(res_sym[key])
 
 
-    # Unscale X
+    # Unscale X: we unscale the generalised coordinates, speeds and accelerations to use them in the external function
+    # tpo compute the system inverse dynamics.
     Xkj_nsc = ca.MX.zeros(*Xkj.shape)
     Xkj_nsc[0::2, :] = Xkj[0::2, :] * x_scaling.Qs[q_ind_indices]
     Xkj_nsc[1::2, :] = Xkj[1::2, :] * x_scaling.Qsdot[q_ind_indices]
 
-
     Aj_nsc  = Aj * x_scaling.Qsdotdot[q_ind_indices]
+
+    # Unscale muscle states and controls: we unscale the muscle variables to compute the Hill equilibrium and also the
+    # muscle lengths and moment arms associated with a specific pose.
+    mtu_f_kj_nsc = mtu_f_kj * muscle_scaling['mtu_f']
+    mtu_df_j_nsc = mtu_df_j * muscle_scaling['mtu_df']
+    va_k_nsc = va_k * muscle_scaling['va']
 
 
     # ---------------------- CasADi functions -------------------------- #
