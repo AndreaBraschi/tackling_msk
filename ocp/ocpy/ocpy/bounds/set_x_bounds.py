@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from ..utils.eval_spline import eval_spline
 
 def set_x_bounds(Qs: np.ndarray, time_vec: np.ndarray, q_ind_indices: np.ndarray[int], num_q: int,
-                 special_q_bounds: Optional = None):
+                 special_q_bounds):
     """
      This function set the bounds to X, which is the vector representing q and q_dot concatenated.
     :param Qs:
@@ -52,7 +52,7 @@ def set_x_bounds(Qs: np.ndarray, time_vec: np.ndarray, q_ind_indices: np.ndarray
     Qs_upper = Qs_upper / scaling.Qs
 
     # check if the user has set some special bounds to be assigned
-    if special_q_bounds is not None:
+    if special_q_bounds:
         keys = special_q_bounds.keys()
 
         for key in list(keys):
