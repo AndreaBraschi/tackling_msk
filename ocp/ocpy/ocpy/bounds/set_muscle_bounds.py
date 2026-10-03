@@ -14,8 +14,8 @@ def set_muscle_bounds(num_muscles: int):
     # ----------- activation time derivative ----------- #
     t_act = 0.015
     t_deact = 0.06
-    va_lower = - ((1 / 100) * np.ones((num_muscles, 1))) / (np.ones((num_muscles, )) * t_deact)
-    va_upper = ((1 / 100) * np.ones((num_muscles, 1))) / (np.ones((num_muscles,)) * t_act)
+    va_lower = - ((1 / 100) * np.ones((num_muscles, 1))) / (np.ones((num_muscles, 1)) * t_deact)
+    va_upper = ((1 / 100) * np.ones((num_muscles, 1))) / (np.ones((num_muscles, 1)) * t_act)
     bounds['va_lower'] = va_lower
     bounds['va_upper'] = va_upper
 
