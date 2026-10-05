@@ -67,7 +67,6 @@ def force_equilibrium(a_m, fT_norm, dfT_norm, lMT, vMT, mtu_params):
     vM_norm = vM / vM_max
 
 
-
     # Now to compute the Hill-equilibrium, we need the following quantities: active force-length, passive force-length
     # and force-velocity.
 
@@ -89,7 +88,7 @@ def force_equilibrium(a_m, fT_norm, dfT_norm, lMT, vMT, mtu_params):
     e0 = 0.6
     exp_0 = _exp((k_pe * (lM_norm - 1)) / e0) - 1
     exp_1 = _exp(k_pe) - 1
-    fl_passive = exp_0 / exp_1
+    fl_passive = (exp_0 - f_p_params[0]) / exp_1
 
     # ------------------------------------------------------------------ #
     # Force-Velocity function
@@ -103,9 +102,9 @@ def force_equilibrium(a_m, fT_norm, dfT_norm, lMT, vMT, mtu_params):
     # Hill equilibrium error  (dimensionless form)
     # ------------------------------------------------------------------ #
     muscle_force = a_m * fl_act * fv + fl_passive
-    err = FMo * muscle_force * cos_alpha - FMo * fT_norm
+    err = muscle_force * cos_alpha - fT_norm
 
-    return err, FT, Fce, Fiso, vMmax, Fpetilde, lMtilde
+    return err
 
 
 # ---------------------------------------------------------------------------
