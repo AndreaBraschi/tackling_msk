@@ -1,121 +1,109 @@
-"""
-muscle_force_equilibrium.py
-
-Hill-type muscle model: De Groote et al. (2016) formulation.
-
-Original author: Antoine Falisse (12/19/2018)
-Reference: De Groote et al., Ann Biomed Eng (2016)
-           DOI: 10.1007/s10439-016-1591-9
-
-Works with NumPy arrays and CasADi symbolics alike (all operations are
-element-wise and use only arithmetic/exp/log/sqrt, which CasADi overloads).
-"""
-
 import numpy as np
 
 
-def force_equilibrium(a, fse, dfse, lMT, vMT, params, Fvparam, Fpparam, Faparam):
+def force_equilibrium(a_m, fT_norm, dfT_norm, lMT, vMT, mtu_params):
     """
     Compute the Hill-equilibrium and related muscle quantities.
 
-    Parameters
-    ----------
-    a      : activation  (num_muscles,)
-    fse    : normalised tendon force  FTtilde  (num_muscles,)
-    dfse   : time derivative of normalised tendon force  (num_muscles,)
-    lMT    : muscle-tendon length  (num_muscles,)
-    vMT    : muscle-tendon velocity  (num_muscles,)
-    params : (5, num_muscles) float array
-                row 0: FMo   – max isometric force
-                row 1: lMo   – optimal fibre length
-                row 2: lTs   – tendon slack length
-                row 3: alphao– pennation angle at optimal fibre length
-                row 4: vMmax – max contraction velocity (= vMaxrel * lMo)
-    Fvparam : (4,) force-velocity curve parameters
-    Fpparam : (2,) passive force-length curve parameters
-    Faparam : (8,) active force-length curve parameters
-
-    Returns
-    -------
-    err      : Hill equilibrium error  (Fce + Fpe)*cos_alpha - fse
-    FT       : tendon force            = fse * FMo
-    Fce      : contractile element force
-    Fiso     : normalised active force-length value  FMltilde
-    vMmax    : max contraction velocity
-    Fpetilde : normalised passive force
-    lMtilde  : normalised fibre length
     """
+
+    # ---------------------------------------------------------------------------------------------------------------- #
+    #                                        static parameters to form muscle ODEs
+    # ---------------------------------------------------------------------------------------------------------------- #
     # Unpack muscle-tendon parameters (broadcast over muscles)
-    FMo   = params[0, :]
-    lMo   = params[1, :]
-    lTs   = params[2, :]
-    alphao = params[3, :]
-    vMmax  = params[4, :]
+    FMo   = mtu_params[0, :]        # peak isometric muscle force
+    lMo   = mtu_params[1, :]        # optimal fiber length
+    lTs   = mtu_params[2, :]        # tendon slack length
+    alpha_o = mtu_params[3, :]       # pennation angle at optimal fiber length
+    vM_max  = mtu_params[4, :]       # maximal muscle fiber velocity
 
-    Atendonsc = 35.0
-    Atendon = Atendonsc  # scalar; broadcast will handle arrays
 
-    # ------------------------------------------------------------------ #
-    # Inverse tendon force-length: recover normalised tendon length lTtilde
-    # ------------------------------------------------------------------ #
-    lTtilde = _log(5.0 * (fse + 0.25)) / Atendon + 0.995
+    # Tendon force-length
+    kT = 35.0
+    c1 = 0.2
+    c2 = 0.995
+    c3 = 0.25
 
-    # ------------------------------------------------------------------ #
-    # Geometric relationship: fibre length
-    # ------------------------------------------------------------------ #
-    lM      = _sqrt((lMo * _sin(alphao))**2 + (lMT - lTs * lTtilde)**2)
-    lMtilde = lM / lMo
 
-    # ------------------------------------------------------------------ #
-    # Active force-length characteristic  FMltilde
-    # ------------------------------------------------------------------ #
-    b11, b21, b31, b41 = Faparam[0], Faparam[1], Faparam[2], Faparam[3]
-    b12, b22, b32, b42 = Faparam[4], Faparam[5], Faparam[6], Faparam[7]
-    b13, b23, b33, b43 = 0.1, 1.0, 0.5 * _sqrt(0.5), 0.0
+    # static parameters for the muscle-length-velocity relationships (active and passive)
+    f_p_params = [-0.9952, 53.5982]                                                            # passive force-length
+    f_v_params = [-0.3183, -8.1492, -0.3741, 0.8856]                                           # force-velocity
 
-    FMtilde1 = b11 * _exp(-0.5 * ((lMtilde - b21) / (b31 + b41 * lMtilde))**2)
-    FMtilde2 = b12 * _exp(-0.5 * ((lMtilde - b22) / (b32 + b42 * lMtilde))**2)
-    FMtilde3 = b13 * _exp(-0.5 * ((lMtilde - b23) / (b33 + b43 * lMtilde + 1e-12))**2)
-
-    FMltilde = FMtilde1 + FMtilde2 + FMtilde3
-    Fiso = FMltilde
+    f_a_params = [0.8145, 1.0550, 0.1624, 0.0633, 0.4330, 0.7168, -0.0299, 0.2004]  # active force-length
+    b11, b12, b13 = f_a_params[0], f_a_params[4], 0.1
+    b21, b22, b23 = f_a_params[1], f_a_params[5], 1.0
+    b31, b32, b33 = f_a_params[2], f_a_params[6], 0.354
+    b41, b42, b43 = f_a_params[3], f_a_params[7], 0.0
 
     # ------------------------------------------------------------------ #
-    # Active force-velocity characteristic  FMvtilde
+    # Tendon length
     # ------------------------------------------------------------------ #
-    vT      = lTs * dfse / (7.0 * _exp(35.0 * (lTtilde - 0.995)))
-    cos_alpha = (lMT - lTs * lTtilde) / lM
-    vM      = (vMT - vT) * cos_alpha
-    vMtilde = vM / vMmax
-
-    e1, e2, e3, e4 = Fvparam[0], Fvparam[1], Fvparam[2], Fvparam[3]
-    inner = e2 * vMtilde + e3
-    FMvtilde = e1 * _log(inner + _sqrt(inner**2 + 1.0)) + e4
+    # Invert tendon force-length: recover normalised tendon length
+    lT_norm = _log((fT_norm + c3) / c1) / kT + c2
+    # tendon length (unscaled)
+    lT = lT_norm * lTs
 
     # ------------------------------------------------------------------ #
-    # Active (contractile element) force
+    # Fibre length
     # ------------------------------------------------------------------ #
-    d = 0.01  # damping coefficient
-    Fcetilde = a * FMltilde * FMvtilde + d * vMtilde
-    Fce = FMo * Fcetilde
+    lM = _sqrt((lMo * _sin(alpha_o))**2 + (lMT - lT)**2)         # muscle fiber length
+    lM_norm = lM / lMo
 
     # ------------------------------------------------------------------ #
-    # Passive force-length characteristic
+    # Pennation angle
     # ------------------------------------------------------------------ #
-    e0  = 0.6
-    kpe = 4.0
-    t5  = _exp(kpe * (lMtilde - 1.0) / e0)
-    Fpetilde = ((t5 - 1.0) - Fpparam[0]) / Fpparam[1]
+    cos_alpha = (lMT - lT) / lM
 
     # ------------------------------------------------------------------ #
-    # Tendon force
+    # Normalised Tendon velocity
     # ------------------------------------------------------------------ #
-    FT = fse * FMo
+    vT_norm = dfT_norm / (c1 * kT * _exp(kT * (lT_norm - c2)))
+    vT = vT_norm * lTs
+
+    # ------------------------------------------------------------------ #
+    # Muscle fibers velocity
+    # ------------------------------------------------------------------ #
+    vM = (vMT - vT) * cos_alpha
+    vM_norm = vM / vM_max
+
+
+
+    # Now to compute the Hill-equilibrium, we need the following quantities: active force-length, passive force-length
+    # and force-velocity.
+
+    # ------------------------------------------------------------------ #
+    # Active force-length function
+    # ------------------------------------------------------------------ #
+    # 3 Gaussian functions
+    g_func_1 = b11 * _exp(-0.5 * ((lM_norm - b21) / (b31 + b41 * lM_norm))**2)
+    g_func_2 = b12 * _exp(-0.5 * ((lM_norm - b22) / (b32 + b42 * lM_norm))**2)
+    g_func_3 = b13 * _exp(-0.5 * ((lM_norm - b23) / (b33 + b43 * lM_norm + 1e-12))**2)
+
+    fl_act = g_func_1 + g_func_2 + g_func_3
+
+
+    # ------------------------------------------------------------------ #
+    # Passive force-length function
+    # ------------------------------------------------------------------ #
+    k_pe = 4.0
+    e0 = 0.6
+    exp_0 = _exp((k_pe * (lM_norm - 1)) / e0) - 1
+    exp_1 = _exp(k_pe) - 1
+    fl_passive = exp_0 / exp_1
+
+    # ------------------------------------------------------------------ #
+    # Force-Velocity function
+    # ------------------------------------------------------------------ #
+    d0, d1, d2, d3 = f_v_params[0], f_v_params[1], f_v_params[2], f_v_params[3]
+    fv_term = d1 * vM_norm + d2
+    fv = d0 * _log((fv_term + _sqrt(fv_term ** 2 + 1))) + d3
+
 
     # ------------------------------------------------------------------ #
     # Hill equilibrium error  (dimensionless form)
     # ------------------------------------------------------------------ #
-    err = (Fcetilde + Fpetilde) * cos_alpha - fse
+    muscle_force = a_m * fl_act * fv + fl_passive
+    err = FMo * muscle_force * cos_alpha - FMo * fT_norm
 
     return err, FT, Fce, Fiso, vMmax, Fpetilde, lMtilde
 
