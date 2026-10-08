@@ -1,44 +1,11 @@
-"""
-mvpoly_sym.py
-
-Symbolic multivariate polynomial basis and its Jacobian, built with
-CasADi SX symbolics.
-
-Equivalent to MATLAB's mvpoly_sym.m in the original codebase.
-"""
-
 from __future__ import annotations
 
 import numpy as np
 import casadi as ca
-from itertools import combinations_with_replacement
 
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
 
 def mvpoly_sym(qs: ca.SX, order: int):
-    """
-    Build the monomial basis matrix and its partial-derivative matrix for
-    a multivariate polynomial of given order.
 
-    Parameters
-    ----------
-    qs : ca.SX, shape (1, n_dof)
-        Symbolic row vector of joint coordinates.
-    order : int
-        Maximum total polynomial degree (inclusive).
-
-    Returns
-    -------
-    mat : ca.SX, shape (n_points, n_coeff)
-        Each row evaluates all monomials for one input point.
-        Here n_points = qs.shape[0].
-    diff_mat_q : ca.SX, shape (n_coeff, n_dof)
-        diff_mat_q[:, j] holds the partial derivative of each monomial
-        w.r.t. qs[j].
-    """
     n_dof    = qs.shape[1]
     n_points = qs.shape[0]
 
@@ -62,14 +29,7 @@ def mvpoly_sym(qs: ca.SX, order: int):
 # ---------------------------------------------------------------------------
 
 def _eval_monomial(x: ca.SX, powers: np.ndarray) -> ca.SX:
-    """
-    Evaluate all monomials  x[0]^p0 * x[1]^p1 * ...  for each row of powers.
 
-    x      : ca.SX, shape (1, n_dof)
-    powers : np.ndarray, shape (n_coeff, n_dof)
-
-    Returns ca.SX, shape (n_coeff, 1).
-    """
     n_coeff, n_dof = powers.shape
     y = ca.SX.ones(n_coeff, 1)
     for col in range(n_dof):
@@ -80,11 +40,7 @@ def _eval_monomial(x: ca.SX, powers: np.ndarray) -> ca.SX:
 
 
 def _eval_der_monomial(x: ca.SX, powers: np.ndarray, idx: int) -> ca.SX:
-    """
-    Partial derivative of all monomials w.r.t. x[idx].
 
-    d/dx_idx ( prod_j x_j^p_j ) = p_idx * x_idx^(p_idx-1) * prod_{j!=idx} x_j^p_j
-    """
     n_coeff, n_dof = powers.shape
     coeff   = powers[:, idx].copy().astype(float)   # p_idx values
     new_pow = powers.copy().astype(float)
@@ -101,10 +57,7 @@ def _eval_der_monomial(x: ca.SX, powers: np.ndarray, idx: int) -> ca.SX:
 
 
 def _all_monomials_upto(order: int, n_dof: int) -> np.ndarray:
-    """
-    Return all monomial exponent tuples of total degree 0 … order.
-    Shape: (n_coeff, n_dof).
-    """
+
     rows = []
     for d in range(order + 1):
         rows.extend(_weak_compositions(d, n_dof))
@@ -112,10 +65,7 @@ def _all_monomials_upto(order: int, n_dof: int) -> np.ndarray:
 
 
 def _weak_compositions(d: int, k: int) -> list[list[int]]:
-    """
-    All k-tuples of non-negative integers summing to d
-    (equivalent to MATLAB's weak_compositions).
-    """
+
     if k == 1:
         return [[d]]
     result = []
