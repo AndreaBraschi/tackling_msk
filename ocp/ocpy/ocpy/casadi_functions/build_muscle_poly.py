@@ -8,99 +8,63 @@ coordinates and velocities using pre-fitted polynomial coefficients.
 
 import scipy.io
 from pathlib import Path
-
 import casadi as ca
 import numpy as np
-import sys, os
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from casadi_functions.mvpoly_sym import mvpoly_sym
 
 
-def build_muscle_function(path_muscle_poly: str | Path) -> ca.Function:
-    """
-    Build a CasADi Function for muscle geometry.
+from .mvpoly_sym import mvpoly_sym
 
-    Parameters
-    ----------
-    path_muscle_poly : str or Path
-        Directory containing:
-          - muscle_spanning_joints_info.mat
-          - muscle_info_opt.mat
 
-    Returns
-    -------
-    ca.Function
-        'f_muscle' : (qin, qdotin) → (lMT, vMT, dM)
-          qin     : (1, num_q)
-          qdotin  : (1, num_q)
-          lMT     : (num_muscles, 1)
-          vMT     : (num_muscles, 1)
-          dM      : (num_muscles, num_q)
-    """
-    path_muscle_poly = Path(path_muscle_poly)
+def build_muscle_function(muscle_pkl) -> ca.Function:
 
-    # ------------------------------------------------------------------ #
-    # Load spanning-joint info and polynomial coefficients
-    # ------------------------------------------------------------------ #
-    spanning_mat  = scipy.io.loadmat(
-        path_muscle_poly / "muscle_spanning_joints_info.mat"
-    )
-    muscle_info_mat = scipy.io.loadmat(
-        path_muscle_poly / "muscle_info_opt.mat"
-    )
+    # which joints are spanned by which muscle
+    muscle_spanning = muscle_pkl['spanning']
+    # where polynomial infos are stored
+    muscle_info = muscle_pkl['muscle_info']
 
-    # The first (non-meta) field holds the spanning-joint matrix
-    field = next(k for k in spanning_mat if not k.startswith("_"))
-    spanning = spanning_mat[field]                  # (num_muscles, num_q)
+    num_q, num_muscles = muscle_spanning.shape[1], muscle_spanning.shape[0]
 
-    muscle_info = muscle_info_mat["MuscleInfo"]     # structured array
-
-    num_q, num_muscles = spanning.shape[1], spanning.shape[0]
-
-    # ------------------------------------------------------------------ #
-    # Symbolic design variables
-    # ------------------------------------------------------------------ #
-    qin    = ca.SX.sym("qin",    1, num_q)
+    # Symbolic variables for subset of q's and q dot needed to compute muscle lengths and moment arms
+    qin    = ca.SX.sym("qin", 1, num_q)
     qdotin = ca.SX.sym("qdotin", 1, num_q)
 
-    lMT = ca.SX(num_muscles, 1)
-    vMT = ca.SX(num_muscles, 1)
-    dM  = ca.SX(num_muscles, num_q)
+    lMT = ca.SX(num_muscles, 1)             # muscle-tendon length
+    vMT = ca.SX(num_muscles, 1)             # rate of change of muscle-tendon length
+    dM  = ca.SX(num_muscles, num_q)         # muscle-tendon moment arm
 
-    for i in range(num_muscles):
-        # DoF indices this muscle spans (0-based)
-        dof_indices = np.where(spanning[i, :] == 1)[0]
+    for i, muscle in enumerate(muscle_info):
+
+        # find which DoFs the current muscle spans
+        dof_indices = np.where(muscle_spanning[i, :] == 1)[0].tolist()
 
         # Polynomial order for this muscle
-        order = int(muscle_info["muscle"][0, 0]["order"][0, i])
+        order = muscle_info[muscle]['order']
 
-        # Coefficients stored in a cell array; pick the one for 'order'
-        # In scipy, MATLAB cell arrays come out as object arrays
-        coeff_cell = muscle_info["muscle"][0, 0]["coeff"][0, i]
-        # coeff_cell is shape (1, order); pick last (index = order-1)
-        coeff = np.squeeze(coeff_cell[0, order - 1])   # (n_coeff,)
+        # poly coefficients
+        coeff = muscle_info[muscle]['coeff_selected']
 
-        # Symbolic polynomial basis
-        q_subset = qin[0, dof_indices]                 # (1, n_spanning)
-        mat, diff_mat_q = mvpoly_sym(q_subset, order)  # (1,n_coeff), (n_coeff,n_sp)
+        # retrieve only the polynomial that were selected after the reduction (those will be flagged by a 0 in the array
+        # where the coefficients are stored).
+        indices_nonzero = np.where(coeff != 0)[0]
+        coeff_nonzero = coeff[indices_nonzero]
 
-        # Non-zero coefficient indices
-        nz = np.where(coeff != 0)[0]
-        coeff_nz = coeff[nz]
+        # compute muscle length and moment arm, symbolically, given the set of
+        # q's that the current muscle spans.
+        mat, diff_mat_q = mvpoly_sym(qin[:, dof_indices], order)  # (1,n_coeff), (n_coeff,n_sp)
 
-        # Muscle-tendon length
-        lMT[i] = mat[0, nz] @ coeff_nz
+
+        # compute muscle-tendon length only using the relevant coefficients
+        lMT[i] = mat[0, indices_nonzero] @ coeff_nonzero
 
         vMT[i] = 0
         dM[i, :] = 0
 
-        for dof_nr, glob_idx in enumerate(dof_indices):
+        for qi_local, qi_global in enumerate(dof_indices):
             # Moment arm: –d(lMT)/d(q)
-            ma = -(diff_mat_q[nz, dof_nr].T @ coeff_nz)
-            dM[i, glob_idx] = ma
+            ma = -(diff_mat_q[indices_nonzero, qi_local].T @ coeff_nonzero)
+            dM[i, qi_global] = ma
 
-            # Rate of change of lMT
-            vMT[i] = vMT[i] + (-dM[i, glob_idx] * qdotin[0, glob_idx])
+
+            vMT[i] = vMT[i] + (-dM[i, qi_global] * qdotin[0, qi_global])
 
     return ca.Function("f_muscle", [qin, qdotin], [lMT, vMT, dM])
