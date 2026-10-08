@@ -1,3 +1,4 @@
 from .set_x_bounds import set_x_bounds
 from .set_torque_bounds import set_torque_bounds
 from .set_residual_bounds import set_residual_bounds
+from .set_muscle_bounds import set_muscle_bounds

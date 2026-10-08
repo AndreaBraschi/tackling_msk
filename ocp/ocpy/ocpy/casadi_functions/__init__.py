@@ -1,3 +1,6 @@
 from .torque_activation_dynamics_casadi import torque_activation_dynamics_casadi
 from .sum_of_squares import sum_of_squares
 from .apply_constraints import apply_constraints
+from .hill_equilibrium import generate_hill_equilibrium_func
+from .compute_joint_moment import compute_joint_moment
+from .build_muscle_poly import build_muscle_poly
